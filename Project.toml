@@ -1,0 +1,10 @@
+[deps]
+Arrow = "69666777-d1a9-59fb-9406-91d4454c9d45"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DataFramesMeta = "1313f7d8-7da2-5740-9ea0-a2ca25f37964"
+Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+Loess = "4345ca2d-374a-55d4-8d30-97f9976e7612"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
+StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
+Weave = "44d3d7a6-8a23-5bf8-98c5-b353f8df5ec9"
