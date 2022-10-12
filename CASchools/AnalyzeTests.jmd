@@ -3,7 +3,8 @@
 using Pkg
 Pkg.activate(".")
 
-using DataFrames, CSV, DataFramesMeta, StatsPlots, Downloads, ProgressMeter, Weave
+using DataFrames, CSV, DataFramesMeta, StatsPlots, Downloads, ProgressMeter, Weave, Loess, Arrow
+
 ```
 
 # Getting Started With Julia for Data Analysis
@@ -27,15 +28,26 @@ versions = [2015 => 3, 2016 => 3, 2017 => 2, 2018 => 3, 2019 => 4 , 2021 => 2]
 
 
 files = ["sb_ca$(vv[1])_all_19_csv_v$(vv[2]).zip" for vv in versions]
+```
 
-# we also need the entity file that describes the codes for each school/district etc and the codes for the tests and student group descriptions
-# we'll assume for our analysis that none of the entities of interest changed during the time period
-# and just get the recent one
+We also need the entity file that describes the codes for each school/district etc and the codes for the tests and student group descriptions
+we'll assume for our analysis that none of the entities of interest changed during the time period and just get the recent ones.
+
+```julia
 
 push!(files,"sb_ca2021entities_csv.zip")
 push!(files,"Tests.zip")
 push!(files,"StudentGroups.zip")
+
 ```
+
+# Downloading the files
+
+We'll change directory into the data dir, download each of the files, unzip them, and then cd out of the directory. 
+
+We use try/finally to ensure that we wind up in the same directory even if there's an error, then read the directory
+to see what files we have...
+
 
 ```julia
 try 
@@ -49,9 +61,7 @@ try
 finally
     cd("..")
 end
-```
 
-```julia
 readdir("data")
 ```
 
@@ -62,30 +72,165 @@ What do we do about that? DataFrames allows us to append!(df,df2) and handle the
 cols=:union causes the resulting dataset to have all the columns from both files, but with missing values where needed
 
 ```julia
+
 testscores = DataFrame()
 entities = DataFrame()
 tests = DataFrame()
 students = DataFrame()
-for f in filter(readdir("data")) do x 
-        occursin(".txt",x)
+if ispath("data/tests.arrow")
+    global tests = DataFrame(Arrow.Table("data/tests.arrow"))
+    global students = DataFrame(Arrow.Table("data/students.arrow"))
+    global entities = DataFrame(Arrow.Table("data/entities.arrow"))
+    global testscores = DataFrame(Arrow.Table("data/testscores.arrow"))
+end
+
+if ! ispath("data/tests.arrow")
+    for f in filter(readdir("data")) do x 
+            occursin(".txt",x)
+        end
+        @show f
+        if occursin("entities",f)
+            global entities = CSV.read(joinpath("data",f),DataFrame; normalizenames=true, delim="^")
+        elseif occursin("Student",f)
+            global students = CSV.read(joinpath("data",f),DataFrame; normalizenames=true,delim="^")
+        elseif occursin("Tests",f)
+            global tests = CSV.read(joinpath("data",f),DataFrame; normalizenames=true,delim="^")
+        else
+            df = CSV.read(joinpath("data",f),DataFrame; normalizenames=true) # uses a standard "," delimiter
+            append!(testscores,df; cols=:union) # we will collect all the various columns with missing data where they don't exist
+        end
     end
-    @show f
-    if occursin("entities",f)
-        global entities = CSV.read(joinpath("data",f),DataFrame; normalizenames=true, delim="^")
-    elseif occursin("Student",f)
-        global students = CSV.read(joinpath("data",f),DataFrame; normalizenames=true,delim="^")
-    elseif occursin("Tests",f)
-        global tests = CSV.read(joinpath("data",f),DataFrame; normalizenames=true,delim="^")
-    else
-        df = CSV.read(joinpath("data",f),DataFrame; normalizenames=true) # uses a standard "," delimiter
-        append!(testscores,df; cols=:union) # we will collect all the various columns with missing data where they don't exist
+    Arrow.write("data/tests.arrow",tests)
+    Arrow.write("data/students.arrow",students)
+    Arrow.write("data/entities.arrow",entities)
+    Arrow.write("data/testscores.arrow",testscores)
+end
+
+
+
+
+```
+Some columns got parsed as strings rather than numbers. We need to "tryparse" these as Float64, if that returns nothing, 
+we'll replace with missing, if the 
+
+```julia
+
+
+function floatormiss(x)
+    if ismissing(x)
+        return missing
+    end
+    let v = tryparse(Float64,x);
+        if isnothing(v)
+            missing
+        else
+            v
+        end
     end
 end
+
+
+testscores.Mean_Scale_Score = floatormiss.(testscores.Mean_Scale_Score)
 ```
 
 ```julia
-@df @subset(testscores,: scatter(:Grade,:Mean_Scale_Score)
+pusdentities = @subset(entities,.! ismissing.(:District_Name) .&& :District_Name .== "Pasadena Unified" .&& .! ismissing.(:School_Name))
+alhambraentities = @subset(entities,.! ismissing.(:District_Name) .&& :District_Name .== "Alhambra Unified" .&& .! ismissing.(:School_Name))
+glendaleentities = @subset(entities,.! ismissing.(:District_Name) .&& :District_Name .== "Glendale Unified" .&& .! ismissing.(:School_Name))
+
+pusdtests = leftjoin(@select(pusdentities,:School_Code,:School_Name,:District_Name),testscores,on = :School_Code, matchmissing=:notequal)
+alhambratests = leftjoin(@select(alhambraentities,:School_Code,:School_Name,:District_Name),testscores,on = :School_Code, matchmissing=:notequal)
+glendaletests = leftjoin(@select(glendaleentities,:School_Code,:School_Name,:District_Name),testscores,on = :School_Code, matchmissing=:notequal)
+
 ```
 
+# Now, let's just plot points...
+
+We want points for each test... Test_ID = 1 means english, 2 means Math (for "smarter balanced" assessment). Let's group the tests by cohort, meaning Test_Year - (Grade - 3) basically 
+the year they were in 3rd grade which is the first year you take the test.
+
+
 ```julia
+
+function plotschools(entities,testscores)
+
+    for (testid,testname) in Iterators.zip([1,2],["English","Math"])
+        let pl = []
+            for sch in eachrow(entities)
+                ourdf = @subset(testscores,:School_Code .== sch.School_Code .&& :Subgroup_ID .== 1 .&& :Grade .< 13 .&& :Test_Id .== testid .&& .!ismissing.(:Mean_Scale_Score))
+    #            @show ourdf
+                if nrow(ourdf) > 0
+                    p = @df ourdf plot(:Grade,:Mean_Scale_Score; xlim=(3,12),ylim = (2250,2750),group=:Test_Year .- (:Grade .- 3),legend=false,size=(250,250), title="$(testname): $(sch.School_Name)",linewidth=3)
+                    p = @df ourdf scatter!(:Grade,:Mean_Scale_Score; xlim=(3,12),ylim = (2250,2750),group=:Test_Year .- (:Grade .- 3),legend=false,size=(250,250), title="$(testname): $(sch.School_Name)",markerstrokewidth=0)
+                    push!(pl,p)
+
+                end
+            end
+            display(plot(pl...; size=(1500,1500)))
+        end
+    end
+end
+
+plotschools(pusdentities,@subset(pusdtests,:Subgroup_ID .== 1))
+plotschools(alhambraentities,@subset(alhambratests,:Subgroup_ID .== 1))
+
 ```
+
+
+Clearly there are some differences between schools. Since we are looking at the average across the school 
+some of this will be because the demographic and socioeconomic mix of the students is different. 
+For example the middle schoolers at the relative wealthy community of Sierra Madre Middle School are testing about the same 
+as the high school 11th graders at Blair and Marshall Fundamental. 
+
+Also Alhambra schools appear to have higher achievement in general. 
+
+A considerable difference in overall average test scores can be attributed to a different mix
+of students. So let's break down the schools by demographic groups. The Demographic_ID in 
+the students table describes the Student_Groups. We can break this down by:
+
+"Economically Disadvantaged" vs "Not economically disadvantaged"
+
+Race and ethnicity
+
+Parent Education Level
+
+For now, let's focus on math scores, and we'll iterate over every school, and output a graph that shows 
+the average curve for each parent education level:
+
+
+
+```julia
+
+function plotedlevel(schools,scores,dist)
+
+    edlevnames = Dict(90 => "No HSD", 91 => "HSD", 92 => "Some College", 93 => "College Grad", 94=>"Grad School")
+
+    for sch in eachrow(schools)
+        ourdf = @subset(scores,:Test_Id .== 2 .&& :School_Code .== sch.School_Code .&& in.(:Subgroup_ID ,Ref(90:94)))
+        p = @df ourdf scatter(:Grade,:Mean_Scale_Score; xlim=(2.5,12), ylim=(2300,2800),title="$(dist)\nMath $(sch.School_Name)\nBy Parent Ed",label=false,markersize=3,size=(500,500))
+        for edlev in 90:94
+            subs = @subset(ourdf,:Subgroup_ID .== edlev .&& .!ismissing.(:Grade) .&& .! ismissing.(:Mean_Scale_Score))
+            if nrow(subs) < 4 
+                continue
+            end
+            println("There are $(nrow(subs)) observations for $(sch.School_Name)")
+            grades = collect(minimum(subs.Grade):maximum(subs.Grade))
+            if length(grades) > 2
+                l = loess(Float64.(subs.Grade),Float64.(subs.Mean_Scale_Score))
+                p = plot!(grades,map(x -> predict(l,x), Float64.(grades)); label=edlevnames[edlev], linewidth=3)
+            end
+        end
+
+
+        display(p)
+    end
+
+end
+
+
+plotedlevel(pusdentities,pusdtests,"PUSD")
+plotedlevel(alhambraentities,alhambratests,"Alhambra")
+plotedlevel(glendaleentities,glendaletests,"Glendale")
+
+```
+
