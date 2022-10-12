@@ -1,0 +1,91 @@
+
+```julia
+using Pkg
+Pkg.activate(".")
+
+using DataFrames, CSV, DataFramesMeta, StatsPlots, Downloads, ProgressMeter, Weave
+```
+
+# Getting Started With Julia for Data Analysis
+
+In this project, we will download some files from the CA dept of Education which give averaged results for test scores in all schools in CA across various student groups within the schoool.
+
+The data is available at: https://caaspp-elpac.cde.ca.gov/caaspp/ResearchFileListSB?ps=true&lstTestYear=2021&lstTestType=B&lstCounty=00&lstDistrict=00000#dl
+
+We are going to get the Los Angeles county files which avoids unnecessary data.
+
+Unfortunately some years have different "versions" and there is no way on the site to get a list of files, so we need to just by hand click through and find out the file names, for example:
+
+https://caaspp-elpac.cde.ca.gov/caaspp/researchfiles/sb_ca2015_all_19_csv_v3.zip for 2014-2015 LA County
+
+https://caaspp-elpac.cde.ca.gov/caaspp/researchfiles/sb_ca2021_all_19_csv_v2.zip for 2020-2021 LA County data...
+
+there is no 2019-2020 data as COVID prevented the testing from happening.
+
+```julia
+versions = [2015 => 3, 2016 => 3, 2017 => 2, 2018 => 3, 2019 => 4 , 2021 => 2]
+
+
+files = ["sb_ca$(vv[1])_all_19_csv_v$(vv[2]).zip" for vv in versions]
+
+# we also need the entity file that describes the codes for each school/district etc and the codes for the tests and student group descriptions
+# we'll assume for our analysis that none of the entities of interest changed during the time period
+# and just get the recent one
+
+push!(files,"sb_ca2021entities_csv.zip")
+push!(files,"Tests.zip")
+push!(files,"StudentGroups.zip")
+```
+
+```julia
+try 
+    cd("data")
+    @showprogress 3 for f in files
+        if ! ispath(f) # if we don't have the file already
+            Downloads.download("https://caaspp-elpac.cde.ca.gov/caaspp/researchfiles/$(f)",f)
+        end
+        run(`unzip -u $(f)`)
+    end
+finally
+    cd("..")
+end
+```
+
+```julia
+readdir("data")
+```
+
+# We have all the files
+
+Next, we need to read the data in, and try to subset down to the schools of interest. Unfortunately, the files don't all have the same columns, nor do they have the same delimeters!
+What do we do about that? DataFrames allows us to append!(df,df2) and handle the case where they don't have exactly the same columns by various methods by specifying the "cols" option (see docs)
+cols=:union causes the resulting dataset to have all the columns from both files, but with missing values where needed
+
+```julia
+testscores = DataFrame()
+entities = DataFrame()
+tests = DataFrame()
+students = DataFrame()
+for f in filter(readdir("data")) do x 
+        occursin(".txt",x)
+    end
+    @show f
+    if occursin("entities",f)
+        global entities = CSV.read(joinpath("data",f),DataFrame; normalizenames=true, delim="^")
+    elseif occursin("Student",f)
+        global students = CSV.read(joinpath("data",f),DataFrame; normalizenames=true,delim="^")
+    elseif occursin("Tests",f)
+        global tests = CSV.read(joinpath("data",f),DataFrame; normalizenames=true,delim="^")
+    else
+        df = CSV.read(joinpath("data",f),DataFrame; normalizenames=true) # uses a standard "," delimiter
+        append!(testscores,df; cols=:union) # we will collect all the various columns with missing data where they don't exist
+    end
+end
+```
+
+```julia
+@df @subset(testscores,: scatter(:Grade,:Mean_Scale_Score)
+```
+
+```julia
+```
