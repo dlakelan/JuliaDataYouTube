@@ -2,7 +2,7 @@
 
 julia_version = "1.8.0"
 manifest_format = "2.0"
-project_hash = "410d922913e8500a24e3971f3afa505be32c42ad"
+project_hash = "ccf897bb2417450483e498cf61f8fd534e79d1f3"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -943,6 +943,12 @@ version = "2.28.0+0"
 git-tree-sha1 = "e498ddeee6f9fdb4551ce855a46f54dbd900245f"
 uuid = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 version = "0.3.1"
+
+[[deps.Memoization]]
+deps = ["MacroTools"]
+git-tree-sha1 = "55dc27dc3d663900d1d768822528960acadc012a"
+uuid = "6fafb56a-5788-4b4e-91ca-c0cea6611c73"
+version = "0.1.14"
 
 [[deps.MicroCollections]]
 deps = ["BangBang", "InitialValues", "Setfield"]
