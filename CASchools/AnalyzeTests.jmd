@@ -4,7 +4,8 @@ using Pkg
 Pkg.activate(".")
 
 using DataFrames, CSV, DataFramesMeta, StatsPlots, Downloads, ProgressMeter, Weave, 
-    Loess, Arrow, Transducers, Memoization, ReverseDiff, Zygote, Turing, LinearAlgebra, ColorSchemes
+    Loess, Arrow, Transducers, Memoization, ReverseDiff, Zygote, Turing, LinearAlgebra, ColorSchemes,
+    Serialization
 
 ```
 
@@ -381,9 +382,11 @@ smod = schoolmod(map(x -> schoolDict[x],schoolids),edlevtests.Edlev,edlevtests.G
 Turing.setadbackend(:reversediff)
 Turing.setrdcache(true)
 
-
-ch = sample(smod,NUTS(900,.8),MCMCThreads(),500,2)
-
+if ispath("cache/mcmcchain.dat")
+    ch = deserialize("cache/mcmcchain.dat")
+else
+    ch = sample(smod,NUTS(900,.8),MCMCThreads(),500,2)
+end
 ```
 
 Now that we have fit our model, we have hundreds of samples of hundreds of parameters. Let's take a look at their distribution 
@@ -416,7 +419,7 @@ for sch in 1:length(uniqueids)
         al = has7 ? 1.0 : .1
         p = plot!([6,8], [c7-m7,c7+m7]; linewidth=6, color=edlevcolors[ed],alpha=al)
         al = has11 ? 1.0 : .1
-        p = scatter!([11], [c11]; markersize=6,alpha=al)
+        p = scatter!([11], [c11]; markersize=6,alpha=al,color=edlevcolors[ed])
         for i in 1:10
             edmult =  ch[i,Symbol("edlevmult[$sch]"),1]
             j = rand(1:length(ch))
