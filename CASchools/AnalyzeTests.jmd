@@ -4,7 +4,7 @@ using Pkg
 Pkg.activate(".")
 
 using DataFrames, CSV, DataFramesMeta, StatsPlots, Downloads, ProgressMeter, Weave, 
-    Loess, Arrow, Transducers, Memoization, ReverseDiff,Turing, LinearAlgebra
+    Loess, Arrow, Transducers, Memoization, ReverseDiff, Zygote, Turing, LinearAlgebra, ColorSchemes
 
 ```
 
@@ -92,7 +92,7 @@ if ispath(joinpath(cachedir,"tests.arrow"))
     ourentities = @subset(entities,in.(:District_Name, Ref(["Pasadena Unified","Glendale Unified", "Alhambra Unified"])))
     @show ourentities
     let ourdistcodes = unique(ourentities.District_Code);
-        global testscores = Tables.rows(Arrow.Table(joinpath(cachedir,"testscores.arrow"))) |> Filter(x -> !ismissing(x.District_Code) && x.District_Code in ourdistcodes) |> DataFrame
+        global testscores = Tables.rows(Arrow.Table(joinpath(cachedir,"testscores.arrow"))) |> Filter(x -> !ismissing(x.District_Code) && x.District_Code in ourdistcodes && x.School_Code .!= 0) |> DataFrame
     end
 else
     for f in filter(endswith(".txt"),readdir("data"))
@@ -287,11 +287,17 @@ data with covariates where we could fit a more complicated model.
     c7avg ~ Normal(2500.0,200.0)
     c11avg ~ Normal(2550.0,200.0)
 
-    c4 ~ MvNormal(repeat([c4avg],nschools),20.0^2*I(nschools))
-    c7 ~ MvNormal(repeat([c7avg],nschools),20.0^2*I(nschools))
-    c11 ~ MvNormal(repeat([c11avg],nschools),20.0^2*I(nschools))
-    m4 ~ MvNormal(repeat([0.0],nschools),50.0^2*I(nschools))
-    m7 ~ MvNormal(repeat([0.0],nschools),50.0^2*I(nschools))
+    m4avg ~ Normal(0.0,100.0)
+    m7avg ~ Normal(0.0,100.0)
+    msd ~ Gamma(10.0,20.0/9.0)
+    csd ~ Gamma(10.0,20.0/9.0)
+    c4 ~ MvNormal(repeat([0.0],nschools),csd^2*I(nschools))
+    c7 ~ MvNormal(repeat([0.0],nschools),csd^2*I(nschools))
+    c11 ~ MvNormal(repeat([0.0],nschools),csd^2*I(nschools))
+    m4 ~ MvNormal(repeat([0.0],nschools),msd^2*I(nschools))
+    m7 ~ MvNormal(repeat([0.0],nschools),msd^2*I(nschools))
+
+    edlevmult ~ filldist(Gamma(20.0,1.0/19),nschools)
 
     cedlev4 ~ MvNormal(repeat([0.0],nedlev),Diagonal([50.0,50.0,50.0,50.0,50.0].^2))
     cedlev7 ~ MvNormal(repeat([0.0],nedlev),Diagonal([50.0,50.0,50.0,50.0,50.0].^2))
@@ -308,18 +314,18 @@ data with covariates where we could fit a more complicated model.
         if ed  == 1 # base case
             med4 = med7 = ced4 = ced7 = ced11 = zero(eltype(cedlev4))
         else
-            ced4 = cedlev4[ed]
-            ced7 = cedlev7[ed]
-            ced11 = cedlev11[ed]
-            med4 = medlev4[ed]
-            med7 = medlev7[ed]
+            ced4 = cedlev4[ed] * edlevmult[s]
+            ced7 = cedlev7[ed] * edlevmult[s]
+            ced11 = cedlev11[ed] * edlevmult[s]
+            med4 = medlev4[ed] * edlevmult[s]
+            med7 = medlev7[ed] * edlevmult[s]
         end
         if g in (3,4,5)
-            preds[i] = (c4[s] + ced4) + (m4[s] + med4) * (g-4)
+            preds[i] = (c4avg + c4[s] + ced4) + (m4avg + m4[s] + med4) * (g-4)
         elseif g in (6,7,8)
-            preds[i] = (c7[s] + ced7) + (m7[s] + med7) * (g-7)
+            preds[i] = (c7avg + c7[s] + ced7) + (m7avg + m7[s] + med7) * (g-7)
         elseif g == 11
-            preds[i] = (c11[s] + ced11)
+            preds[i] = (c11avg + c11[s] + ced11)
         end
     end
     meanscore ~ MvNormal(preds,s^2 * I(length(preds)))
@@ -333,17 +339,41 @@ end
 schoolids = map(Pair,edlevtests.District_Code,edlevtests.School_Code)
 uniqueids = unique(schoolids)
 schoolnames = Dict()
-for r in eachrow(entities)
-    schoolnames[r.District_Code => r.School_Code] = r.School_Name
+schooldists = Dict()
+schoolgrades = Dict()
+
+for (i,k) in Iterators.enumerate(uniqueids)
+    schoolnames[i] = "Unknown"
+    schoolnames[k] = "Unknown"
+    for g in 1:11
+        schoolgrades[k => g] = false
+    end
+    schooldists[k] = "Unknown"
+    schooldists[i] = "Unknown"
 end
 
-schoolDict = Dict(map(Pair,uniqueids,1:length(uniqueids)))
-for (k,v) in schoolDict
-    if haskey(schoolnames,k)
-        schoolnames[v] = schoolnames[k]
-    else
-        schoolnames[v] = "Unknown"
+for r in eachrow(entities)
+    schoolnames[r.District_Code => r.School_Code] = r.School_Name
+    schooldists[r.District_Code => r.School_Code] = r.District_Name
+    for grade in 1:11
+        schoolgrades[(r.District_Code => r.School_Code) => grade ] = false
     end
+end
+
+for i in 1:length(uniqueids)
+    schooldists[i] = schooldists[uniqueids[i]]
+end
+
+for r in eachrow(testscores)
+    schoolgrades[(r.District_Code => r.School_Code) => r.Grade ] = true
+end
+
+schoolDict = Dict()
+merge!(schoolDict,Dict(map(Pair,uniqueids,1:length(uniqueids))))
+merge!(schoolDict,Dict(map(Pair,1:length(uniqueids),uniqueids)))
+
+for i in 1:length(uniqueids)
+    schoolnames[i] = haskey(schoolnames,schoolDict[i]) ? schoolnames[schoolDict[i]] : "Unknown";
 end
 
 smod = schoolmod(map(x -> schoolDict[x],schoolids),edlevtests.Edlev,edlevtests.Grade,edlevtests.Score,length(uniqueids),5)
@@ -351,7 +381,6 @@ smod = schoolmod(map(x -> schoolDict[x],schoolids),edlevtests.Edlev,edlevtests.G
 Turing.setadbackend(:reversediff)
 Turing.setrdcache(true)
 
-Turing.setadbackend(:zygote)
 
 ch = sample(smod,NUTS(900,.8),MCMCThreads(),500,2)
 
@@ -363,29 +392,45 @@ Now that we have fit our model, we have hundreds of samples of hundreds of param
 
 
 for sch in 1:length(uniqueids)
+    dist = schooldists[sch]
+    p = plot(; linewidth=3, title = "$dist : $(schoolnames[sch])", xlim=(2.5,12),ylim=(2300,2700),legend=false)
+    c4avg = mean(ch[:,Symbol("c4avg"),:])
+    m4avg = mean(ch[:,Symbol("m4avg"),:])
+    c7avg = mean(ch[:,Symbol("c7avg"),:])
+    m7avg = mean(ch[:,Symbol("m7avg"),:])
+    c11avg = mean(ch[:,Symbol("c11avg"),:])
+    edlevcolors = colorschemes[:tol_light] # a RG colorblind friendly pallette
+    has4 = schoolgrades[schoolDict[sch] => 4] 
+    has7 = schoolgrades[schoolDict[sch] => 7] 
+    has11 = schoolgrades[schoolDict[sch] => 11] 
     for ed in 1:5
-    c4 = mean(ch[:,Symbol("c4[$sch]"),:])
-    m4 = mean(ch[:,Symbol("m4[$sch]"),:])
-    c7 = mean(ch[:,Symbol("c7[$sch]"),:])
-    m7 = mean(ch[:,Symbol("m7[$sch]"),:])
-    c11 = mean(ch[:,Symbol("c11[$sch]"),:])
 
-    p = plot([3,5], [c4-m4,c4+m4]; linewidth=3, title = "School $(schoolnames[sch])", xlim=(2.5,12),ylim=(2300,2700),legend=false)
-    p = plot!([6,8], [c7-m7,c7+m7]; linewidth=3)
-    p = scatter!([11], [c11]; markersize=3)
-    for i in 1:10
-        j = rand(1:length(ch))
-        c = ch[j,Symbol("c4[$sch]"),1]
-        m = ch[j,Symbol("m4[$sch]"),1]
-        p = plot!([3,5],[c - m, c + m],label=false,alpha=.5)
+        c4 = mean(ch[:,Symbol("c4[$sch]"),:] + ch[:,Symbol("cedlev4[$ed]"),:] .* ch[:,Symbol("edlevmult[$sch]"),:]) + c4avg
+        m4 = mean(ch[:,Symbol("m4[$sch]"),:] + ch[:,Symbol("medlev4[$ed]"),:] .* ch[:,Symbol("edlevmult[$sch]"),:]) + m4avg
+        c7 = mean(ch[:,Symbol("c7[$sch]"),:] + ch[:,Symbol("cedlev7[$ed]"),:] .* ch[:,Symbol("edlevmult[$sch]"),:]) + c7avg
+        m7 = mean(ch[:,Symbol("m7[$sch]"),:] + ch[:,Symbol("medlev7[$ed]"),:] .* ch[:,Symbol("edlevmult[$sch]"),:]) + m7avg 
+        c11 = mean(ch[:,Symbol("c11[$sch]"),:] + ch[:,Symbol("cedlev11[$ed]"),:] .* ch[:,Symbol("edlevmult[$sch]"),:]) + c11avg
+        
+        al = has4 ? 1.0 : .1
+        p = plot!([3,5], [c4-m4,c4+m4]; linewidth=6, color=edlevcolors[ed], xlim=(2.5,12),ylim=(2300,2800),legend=false, alpha=al)
+        al = has7 ? 1.0 : .1
+        p = plot!([6,8], [c7-m7,c7+m7]; linewidth=6, color=edlevcolors[ed],alpha=al)
+        al = has11 ? 1.0 : .1
+        p = scatter!([11], [c11]; markersize=6,alpha=al)
+        for i in 1:10
+            edmult =  ch[i,Symbol("edlevmult[$sch]"),1]
+            j = rand(1:length(ch))
+            c = ch[j,Symbol("c4[$sch]"),1] + ch[j,Symbol("cedlev4[$ed]"),1] * edmult + c4avg
+            m = ch[j,Symbol("m4[$sch]"),1] + ch[j,Symbol("medlev4[$ed]"),1] * edmult + m4avg
+            p = plot!([3,5],[c - m, c + m],label=false,alpha=.2,color=edlevcolors[ed])
 
-        c =  ch[j,Symbol("c7[$sch]"),1]
-        m = ch[j,Symbol("m7[$sch]"),1]
-        p = plot!([6,8],[c - m, c + m],label=false,alpha=.5)
-        c11 = ch[j,Symbol("c11[$sch]"),1]
-        p = scatter!([randn()*.2 + 11],[c11],label=false,alpha=.5)
+            c =  ch[j,Symbol("c7[$sch]"),1] + ch[j,Symbol("cedlev7[$ed]"),1] * edmult + c7avg
+            m = ch[j,Symbol("m7[$sch]"),1] + ch[j,Symbol("medlev7[$ed]"),1] * edmult + m7avg
+            p = plot!([6,8],[c - m, c + m],label=false,alpha=.2,color=edlevcolors[ed])
+            c11 = ch[j,Symbol("c11[$sch]"),1] + ch[j,Symbol("cedlev11[$ed]"),1] * edmult + c11avg
+            p = scatter!([randn()*.2 + 11],[c11],label=false,alpha=.2,color=edlevcolors[ed])
+        end
     end
-
     display(p)
 end
 
