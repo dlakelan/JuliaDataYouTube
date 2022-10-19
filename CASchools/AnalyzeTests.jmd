@@ -75,6 +75,17 @@ cols=:union causes the resulting dataset to have all the columns from both files
 
 ```julia
 
+intify(s::Int64) = s
+function intify(s)
+    x = tryparse(Int64,s)
+    if isnothing(x)
+        missing
+    else
+        x
+    end
+end
+
+
 testscores = DataFrame()
 entities = DataFrame()
 tests = DataFrame()
@@ -94,6 +105,14 @@ if ispath(joinpath(cachedir,"tests.arrow"))
     @show ourentities
     let ourdistcodes = unique(ourentities.District_Code);
         global testscores = Tables.rows(Arrow.Table(joinpath(cachedir,"testscores.arrow"))) |> Filter(x -> !ismissing(x.District_Code) && x.District_Code in ourdistcodes && x.School_Code .!= 0) |> DataFrame
+        @rtransform!(testscores, :Students_Tested = 
+            if ismissing(:Students_Tested) 
+                intify(:Total_Tested_at_Subgroup_Level)
+            else
+                intify(:Students_Tested)
+            end,
+            :CAASPP_Reported_Enrollment = intify(:CAASPP_Reported_Enrollment),
+            :Total_Tested_At_Entity_Level = intify(:Total_Tested_At_Entity_Level))
     end
 else
     for f in filter(endswith(".txt"),readdir("data"))
@@ -439,4 +458,39 @@ end
 
 
 ```
+
+# Let's take a look at specific coefficient distributions compared across schools:
+
+```julia
+
+let pp = []
+    for (i,sch) in Iterators.enumerate(uniqueids)
+        p1 = density(ch[:,Symbol("c4[$i]"),:]; title = "$(schoolnames[i]) c4",fill=true,alpha=.5,xlim=(-100,100))
+        p2 = density(ch[:,Symbol("c7[$i]"),:]; title = "$(schoolnames[i]) c7",fill=true,alpha=.5,xlim=(-100,100))
+        p3 = density(ch[:,Symbol("c11[$i]"),:]; title = "$(schoolnames[i]) c11",fill=true,alpha=.5,xlim=(-100,100))
+        p4 = density(ch[:,Symbol("m4[$i]"),:]; title = "$(schoolnames[i]) m4",fill=true,alpha=.5,xlim=(-50,50))
+        p5 = density(ch[:,Symbol("m7[$i]"),:]; title = "$(schoolnames[i]) m7",fill=true,alpha=.5,xlim=(-50,50))
+        p6 = density(ch[:,Symbol("edlevmult[$i]"),:]; title = "$(schoolnames[i]) EdLevMult",fill=true,alpha=.5,xlim=(0,2))
+        push!(pp,plot(p1,p2,p3,p4,p5,p6;layout =(1,6),size=(1000,1000),titlefontsize=8))
+    end
+    for ppp in Iterators.partition(pp,4)
+        display(plot(ppp...; size=(1200,1200),layout=(4,1)))
+    end
+end
+
+```
+
+# Let's take a look at the composition of students in each school
+```julia
+
+for (i,sch) in Iterators.enumerate(uniqueids)
+    schdat = @subset(testscores,:Grade .< 12 .&& :District_Code .== sch[1] .&& :School_Code .== sch[2] .&& isa.(:Students_Tested,Int64) .&& :Test_Id .== 2 .&& in.(:Subgroup_ID, Ref((90,91,92,93,94,95))))
+    schdat = @by(schdat,:Subgroup_ID, :ntested = sum(:Students_Tested))
+    p = @df schdat bar(:Subgroup_ID  , :ntested ; legend=false,title="$(schoolnames[sch])\nCount at Parent Education Level")
+    display(p)
+end
+
+
+```
+
 
