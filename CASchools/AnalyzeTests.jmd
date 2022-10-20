@@ -85,6 +85,21 @@ function intify(s)
     end
 end
 
+floatormiss(x::Float64) = x
+function floatormiss(x)
+    if ismissing(x)
+        return missing
+    end
+    if isa(x,String)
+        let v = tryparse(Float64,x);
+            if isnothing(v)
+                missing
+            else
+                v
+            end
+        end
+    end
+end
 
 testscores = DataFrame()
 entities = DataFrame()
@@ -93,28 +108,7 @@ students = DataFrame()
 
 const cachedir = "/var/cache/userdata/dlakelan/juliacache"
 
-if ispath(joinpath(cachedir,"tests.arrow"))
-    global tests = DataFrame(Arrow.Table(joinpath(cachedir,"tests.arrow")))
-    global students = DataFrame(Arrow.Table(joinpath(cachedir,"students.arrow")))
-    global entities = DataFrame(Arrow.Table(joinpath(cachedir,"entities.arrow")))
-
-    # the dataframe for test scores is huge, 3.8 million rows and a lot of columns, we only care about these districts.
-    # we run the rows of the Arrow.Table through a Filter transducer that filters on District_Code and collect the ones we care about, saving gigabytes
-    # of RAM
-    ourentities = @subset(entities,in.(:District_Name, Ref(["Pasadena Unified","Glendale Unified", "Alhambra Unified"])))
-    @show ourentities
-    let ourdistcodes = unique(ourentities.District_Code);
-        global testscores = Tables.rows(Arrow.Table(joinpath(cachedir,"testscores.arrow"))) |> Filter(x -> !ismissing(x.District_Code) && x.District_Code in ourdistcodes && x.School_Code .!= 0) |> DataFrame
-        @rtransform!(testscores, :Students_Tested = 
-            if ismissing(:Students_Tested) 
-                intify(:Total_Tested_at_Subgroup_Level)
-            else
-                intify(:Students_Tested)
-            end,
-            :CAASPP_Reported_Enrollment = intify(:CAASPP_Reported_Enrollment),
-            :Total_Tested_At_Entity_Level = intify(:Total_Tested_At_Entity_Level))
-    end
-else
+if ! ispath(joinpath(cachedir,"tests.arrow")) # there are no cache files, build them.
     for f in filter(endswith(".txt"),readdir("data"))
         @show f
         if occursin("entities",f)
@@ -134,31 +128,32 @@ else
     Arrow.write(joinpath(cachedir,"testscores.arrow"),testscores)
 end
 
+# now we know we have cache files. read them (note doing it this way means we're always analyzing the data from the cache)
 
+tests = DataFrame(Arrow.Table(joinpath(cachedir,"tests.arrow")))
+students = DataFrame(Arrow.Table(joinpath(cachedir,"students.arrow")))
+entities = DataFrame(Arrow.Table(joinpath(cachedir,"entities.arrow")))
 
+# the dataframe for test scores is huge, 3.8 million rows and a lot of columns, we only care about these districts.
+# we run the rows of the Arrow.Table through a Filter transducer that filters on District_Code and collect the ones we care about, saving gigabytes
+# of RAM
+ourentities = @subset(entities,in.(:District_Name, Ref(["Pasadena Unified","Glendale Unified", "Alhambra Unified"])))
+#@show ourentities
+let ourdistcodes = unique(ourentities.District_Code);
 
-```
-Some columns got parsed as strings rather than numbers. We need to "tryparse" these as Float64, if that returns nothing, 
-we'll replace with missing, if the 
-
-```julia
-
-
-function floatormiss(x)
-    if ismissing(x)
-        return missing
-    end
-    let v = tryparse(Float64,x);
-        if isnothing(v)
-            missing
+    global testscores = Tables.rows(Arrow.Table(joinpath(cachedir,"testscores.arrow"))) |> Filter(x -> !ismissing(x.District_Code) && x.District_Code in ourdistcodes && x.School_Code .!= 0) |> DataFrame
+    @rtransform!(testscores, :Students_Tested = 
+        if ismissing(:Students_Tested) 
+            intify(:Total_Tested_at_Subgroup_Level)
         else
-            v
-        end
-    end
+            intify(:Students_Tested)
+        end,
+        :CAASPP_Reported_Enrollment = intify(:CAASPP_Reported_Enrollment),
+        :Total_Tested_At_Entity_Level = intify(:Total_Tested_At_Entity_Level),
+        :Mean_Scale_Score = floatormiss(:Mean_Scale_Score))
 end
 
-
-testscores.Mean_Scale_Score = floatormiss.(testscores.Mean_Scale_Score)
+"Done Loading Data..."
 ```
 
 ```julia
@@ -170,6 +165,7 @@ pusdtests = leftjoin(@select(pusdentities,:School_Code,:School_Name,:District_Na
 alhambratests = leftjoin(@select(alhambraentities,:School_Code,:School_Name,:District_Name),testscores,on = :School_Code, matchmissing=:notequal)
 glendaletests = leftjoin(@select(glendaleentities,:School_Code,:School_Name,:District_Name),testscores,on = :School_Code, matchmissing=:notequal)
 
+"Done subsetting..." # so we don't output the above table
 ```
 
 # Now, let's just plot points...
@@ -241,7 +237,7 @@ function plotedlevel(schools,scores,dist)
             if nrow(subs) < 4 
                 continue
             end
-            println("There are $(nrow(subs)) observations for $(sch.School_Name)")
+            #println("There are $(nrow(subs)) observations for $(sch.School_Name)")
             grades = collect(minimum(subs.Grade):maximum(subs.Grade))
             if length(grades) > 2
                 l = loess(Float64.(subs.Grade),Float64.(subs.Mean_Scale_Score))
@@ -290,8 +286,8 @@ One reason to create a mathematical model is that it can simplify your understan
 a kind of summary of the entire pressure field on the surface of an object... integrated together it results in a certain amount of drag.
 
 In our case we will assume that variation from year to year is low, so that we can pool the years together, and get a summary of how quickly
-students are learning math, by fitting a line through different groups of grades: (3,4,5) (6,7,8) and (8,11) we can summarize the general trend 
-in each school as just 6 numbers (levels and slopes of each group), rather than the details of potentially hundreds of measurements.
+students are learning math, by fitting a line through different groups of grades: (3,4,5) (6,7,8) and the level at grade 11 we can summarize the general trend 
+in each school as just 5 numbers (levels and slopes of each group), rather than the details of potentially hundreds of measurements.
 
 We will assume the level and slope of these three lines depends on parents education level only, since we don't have individual student
 data with covariates where we could fit a more complicated model.
@@ -406,6 +402,9 @@ if ispath("cache/mcmcchain.dat")
 else
     ch = sample(smod,NUTS(900,.8),MCMCThreads(),500,2)
 end
+
+"Done sampling model..."
+
 ```
 
 Now that we have fit our model, we have hundreds of samples of hundreds of parameters. Let's take a look at their distribution 
@@ -483,10 +482,33 @@ end
 # Let's take a look at the composition of students in each school
 ```julia
 
+schoolentropy = DataFrame()
+
 for (i,sch) in Iterators.enumerate(uniqueids)
     schdat = @subset(testscores,:Grade .< 12 .&& :District_Code .== sch[1] .&& :School_Code .== sch[2] .&& isa.(:Students_Tested,Int64) .&& :Test_Id .== 2 .&& in.(:Subgroup_ID, Ref((90,91,92,93,94,95))))
     schdat = @by(schdat,:Subgroup_ID, :ntested = sum(:Students_Tested))
-    p = @df schdat bar(:Subgroup_ID  , :ntested ; legend=false,title="$(schoolnames[sch])\nCount at Parent Education Level")
+    ntot = sum(schdat.ntested)
+    entropy = -sum(schdat.ntested/ntot .* log.(schdat.ntested/ntot))
+    push!(schoolentropy,(school=sch,entropy=entropy))
+    p = @df schdat bar(:Subgroup_ID  , :ntested ./ ntot ; legend=false,title="$(schoolnames[sch])\nFraction at Parent Education Level")
+    display(p)
+end
+schoolentropy.SchoolName = map(x -> schoolnames[x],schoolentropy.school)
+schoolentsorted = @orderby(schoolentropy,:entropy)
+
+schooloveralltests = leftjoin(@transform(@subset(testscores,:Subgroup_ID .== 1 .&& :Test_Id .== 2),:school = map(Pair,:District_Code,:School_Code)),
+    schoolentsorted,on=:school)
+
+
+for gr in (3,4,5,6,7,8,11)
+    sub = @subset(schooloveralltests,:Grade .== gr .&& .!ismissing.(:Mean_Scale_Score) .&& .!ismissing.(:entropy))
+    p = @df sub scatter(:entropy,:Mean_Scale_Score,title="Entropy vs score Grade $gr",ylim=(2300,2700),xlab="Entropy of Parent Education")
+    scores = Float64.(sub.Mean_Scale_Score)
+    ents = Float64.(sub.entropy)
+    l = loess(ents,scores)
+    xvals = collect(minimum(ents):0.025:maximum(ents))
+    preds = Loess.predict(l,xvals)
+    plot!(xvals,preds)
     display(p)
 end
 
