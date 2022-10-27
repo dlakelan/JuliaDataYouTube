@@ -360,7 +360,8 @@ let sandx = rand(Normal(0,1),10000),
 end
 ```
 
-We form a pile of sand (points) such that its shape is enclosed by the standard normal distribution curve...
+Conceptually, we form a pile of sand (points) such that its shape is enclosed by the standard normal distribution curve... Note that 
+if we had a constant times the Normal curve it wouldn't matter, we just stack the sand a different height.
 
 Then we randomly select sand particles, and we color them red, and draw a yellow line from the red point down to the x 
 axis where we place a yellow x.
