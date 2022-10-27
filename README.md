@@ -5,3 +5,4 @@ This code goes along with the YouTube Series from Daniel Lakeland / LakelandAppl
 We step you through setting up Julia, getting data, doing exploratory analysis, graphing,
 and model fitting... While simultaneously discussing how the Julia ecosystem and language works.
 
+You can view output of the [`CASchools analysis here](CASchools/)
