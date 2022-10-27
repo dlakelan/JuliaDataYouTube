@@ -1,0 +1,370 @@
+```julia
+using Distributions, StatsPlots,QuadGK,Printf
+```
+
+# Mathematical Modeling with Uncertainty
+
+Suppose you have some data, and some idea how regularity in this data could be described. We'll call the 
+data "data" and we'll call the description of the regularity a "model".
+
+A model could be expressed in **mathematical formulas** or it could be expressed as a **computable program**.
+
+Whatever the model is, it probably relies on some unknown values which need to have numbers plugged in.
+
+For example, a simple model of a ball falling on the surface of the earth is:
+
+$$x(t) = x_0 + v_0t - g\frac{t^2}{2}$$
+
+Where x is the height of the ball above the release point... $v_0$ is the initial velocity (upwards is positive) and $g$ is the
+gravitational acceleration. The unknown values are $x_0$, $v_0$, and $g$
+
+Data would consist of measurements (x1,t1), (x2,t2) (x3,t3) etc.
+
+We will look at another model in the schools analysis, a piece of this model will be a line with a certain slope
+predicting test scores for 3rd, 4th, and 5th graders (a different line segment will be used for 6,7,8th graders). 
+Complicated models might involve thousands of parameters and solutions of differential equations or agent based models.
+
+# Handling unknowns
+
+We may not know the exact values to plug in to our mathematical formulas for the unknowns, but we have some information about them.
+
+For example, g has been measured precisely previously, but even if we didn't know that, we could say with certainty that dropping a ball
+such that it falls for 1 second would cause it to fall a few meters, and the speed of the ball at the impact is far far less 
+than the speed of sound which is in the hundreds of meters per second range. So $g \times (1 \mathrm{second})$ is small relative to 100 m/s, so we 
+could perhaps say $g\times(1 \mathrm{second}) \sim 20 m/s$ or something like that. And of course, will not be negative (balls don't fly into the air when placed on a table).
+
+I will sometimes use the ~ character to mean "around the same size as" which is an informal notion, but also ~ will be used in 
+the Turing.jl package to mean "is an uncertain quantity with the distribution". In that case on the right hand side will be 
+a Julia distribution struct.
+
+# Expressing knowledge in Probability Distributions
+
+One way to express our knowledge that g in m/s^2 is around 20 or less, is with a probability distribution.
+
+All the probability distributions we are likely to use in our practical data analysis can be expressed as probability densities, 
+which are curves or surfaces that describe a probability per unit length/area/hypervolume.
+
+For example, here is the density of the "standard bell curve"
+
+
+```julia
+
+plot(Normal(0.0,1.0); xlab="x", title = "Standard Normal Distribution\nDensity Function", xlim=(-4,4), label="Normal(0,1)")
+
+```
+
+You can think of this as a function that expresses a "degree of reasonableness" that a given value is the value we should
+use for our unknown x. The most reasonable values are the ones near 0 where the curve has a high value. Values out near 4 or -4 are very much less reasonable.
+
+Probability distributions measure "how probable" (or "how reasonable" or "how much credence we should give") that an unknown should take on a certain value to make our model match the
+reality of our background knowledge and our measurements.
+
+Here are several probability distributions that can express the idea that "g is a positive number around 10 or 20 but quite likely less than 100".
+
+```julia
+pl=plot(;xlim=(0,50))
+for n in 2:10
+    global pl = plot!(Gamma(n,15.0/(n-1)),title = "Gamma Distributions",label="N = $n")
+end
+plot(pl)
+
+```
+
+As we change n to a bigger number, the probability concentrates around the region near the "peak" which we placed at 15.
+
+The more sure we are that the right value is near 15... the more we should concentrate the probability around 15. For the kind of
+estimate we did above, perhaps n=3 or n=4 is an appropriate level of concentration. In any case, we know for sure that 
+the value is positive. The density of the Gamma distribution is 0 for all values below 0. There is no chance (zero probability)
+that the value of g is negative.
+
+# There are many different "standard" probability distributions
+
+In Julia we often work with the Distributions.jl package to create structures that represent particular distributions.
+
+By passing these structures into standard functions defined in the Distributions.jl package, we can calculate things we care about from 
+these distribution objects. For example, we can plot the densities:
+
+```julia
+
+plot(TDist(4); title= "Standard T distribution with 4 degrees of freedom",label="TDist(4) density")
+plot!(Normal(0,1); label = "Normal(0,1) density")
+
+```
+
+We can also calculate the density, or the logarithm of the density ourselves. Here we calculate the logpdf for every x in the given 
+range using the broadcast operation (a period after the function name).
+
+
+```julia
+
+x = range(-10,10;step=.01)
+
+plot(x,logpdf.(Normal(0,1),x); title = "Log of probability density function",label="Normal(0,1)",legend=:bottom)
+plot!(x,logpdf.(TDist(10),x); label="TDist(10)")
+plot!(x,logpdf.(TDist(20),x); label="TDist(20)")
+plot!(x,logpdf.(TDist(30),x); label="TDist(30)")
+
+```
+Above we calculate the logpdf (logarithm to base e of the density) for the standard Normal(0,1) distribution, as well 
+as several T distributions with 10,20,30 degrees of freedom. You can see that in the center of the distribution the curves 
+are similar to the normal, but as we go out to the tails of the distribution, the logarithm of the pdf declines much more slowly. 
+Values far away from the center of the distribution are considerably more likely for T distributions than for Normals.
+
+For example:
+
+```julia
+@printf("It is about %.0f times more reasonable to expect that our unknown is very close to -10 under a TDist(10) than it is under a Normal(0,1) assumption",(exp(logpdf(TDist(10),-10)-logpdf(Normal(0,1),-10))))
+
+```
+
+Although we think of a probability distribution as measuring "reasonableness" how reasonable is it to think that g is precisely
+9.8000000000000000000000021 m/s^2?
+
+Not very reasonable. In fact it's unreasonable to think that it's any very precise number. But it could have some reasonableness
+to think that the number is in some interval or set. For example, maybe it's likely that it's something
+which rounds off in the 2nd decimal place to 9.80 so for example 9.804 or 9.80112 or 9.796 or any of those numbers near 9.80
+could be reasonable. In fact the curves we've been drawing are probability **density** functions. They express how much probability
+there is **per unit of the x axis**. They are very similar to mass density functions. For example if we make a bar of steel with a varying diameter, then we could say that there is more 
+mass per unit length in the center of the bar, and less mass per unit length near the ends of the bar. But there's no mass precisely **at** location 0 (the center of the bar). 
+To get probability we must take the height of our probability density, and multiply by some width. Or in general, we must add up
+those little slices of probability, in an Integral.
+
+You can think of a stack of sheets of paper. The sheets have a finite but small width, and that times their density
+would give their mass. Similarly for probability density, we must multiply by the width of a slice to get something in
+the dimensionless ratio of probability.
+
+Or we could think of piling up sand in a trough. In some places, the trough has higher pile of sand, and in other places
+it has lower height of sand. If we keep the total sand constant, we can move it around in the trough without losing any of it.
+That would shift the probability around, but not change the total.
+
+Probability densities are like the heights of sand in the trough. And the **area** under the density curve is like the 
+total quantity of sand. The convention is that the total quantity of "sand" under a probability density curve is always 1.
+
+$$\int_{-\infty}^{\infty}p(x) dx = 1$$
+
+In fact, every curve that is not negative anywhere, and has 1 as its integral is a proper density function 
+that defines a probability distribution. In probability theory there are exotic distributions that have no density, but 
+we will essentially never encounter them in practice as data analysts (or maybe a limited number of them like the Dirac distribution).
+
+Let's numerically figure out how much of the sand (what fraction of it) is under the Normal(0,1) curve between the values 
+-2 and 2. There are special ways to calculate this accurately, but we will do it by direct numerical integration of the pdf 
+function. Fix1(pdf,Normal(0,1)) creates a "callable struct" that when called with an argument x, executes pdf(Normal(0,1),x). In other 
+words it creates a "version of the pdf function" which always has a fixed first argument.
+
+```julia
+println(@doc Base.Fix1)
+
+pn = quadgk(Base.Fix1(pdf,Normal(0,1)),-2,2)
+@printf("There is about %.1f%% of the sand between -2 and 2 for a Normal(0,1)\n",pn[1]*100)
+
+# how much probability same range for TDist(10)?
+pt = quadgk(Base.Fix1(pdf,TDist(10)),-2,2)
+@printf("There is about %.1f%% of the sand between -2 and 2 for a TDist(10)\n",pt[1]*100)
+
+```
+
+# This is all well and good for Unknowns, but how about Models?
+
+Remember we're calling a "model" any formula or computer code which can make a prediction, 
+if given the value of some unknowns (and maybe some measurements too).
+
+If we don't know the precise values that the unknowns should have, how can we make good predictions?  The answer 
+is to **fit** the model to whatever data we have. That is, infer which values of the unknowns are "reasonable" to use
+and which are not.
+
+There are two kinds of reasonableness. It's really just one kind but from two sources of information. 
+The first is reasonable from what we know when we build the model. For example, we know g must be 
+substantially less than 100 m/s^2 because of our experience in the world and some simple back of the envelope calculations. This 
+"background knowledge" can be expressed in probability notation as:
+
+$$p(g | K)$$
+
+Where K is a stand-in symbol that symbolizes all the general knowledge we have that's relevant to the question of what is g. 
+And p is a stand in symbol for some formula for a pdf function.
+
+People sometimes call this a "prior" distribution. I mention that just because other people use it, but really it's just a 
+distribution based on knowledge K. All distributions are based on some knowledge, sometimes it's pure background knowledge, and sometimes
+it's the union of our background knowledge and some particular "data set".
+
+That's where the other kind of reasonableness comes in: reasonably consistent with the data we've collected. To figure that out we should
+consider what our model thinks is reasonable **as a function of the unknowns**. For example, we might have a measurement of the
+position of our falling ball at 1 second. call it x(1). Suppose we have measured the starting position at x(0) = 0 and the
+starting velocity at v(0)=0. Then the only unknown is g, and if we are given a g value, we can predict x(1) = -g/2 and that 
+difficulty measuring position should leave us with measurements near -g/2 to within some reasonable sized error. 
+We could express this using Julia notation on the right hand side:
+
+p(x(1) | g) = pdf(Normal(-g/2,0.1*g/2),x)
+
+The Turing notation for this would be 
+
+x ~ Normal(-g/2,0.1*g/2)
+
+That is, the pdf function called p(x(1) | g) is the pdf of the Normal(-g/2,0.1*g/2) distribution. This distribution says that 
+our measurement should be within about 10% of the prediction.
+
+Let's graph this pdf when a proposed value of g = 15.2 m/s^2
+
+```julia
+
+plot(Normal(-15.2/2,1.52/2); xlim=(-15,0), label ="g = 15.2 m/s^2", title="Probability Density for x(1)",legend=:topleft)
+
+```
+
+Now, if the measured value of x(1) is any number outside the range around [-10,-5] then obviously the probability of being within epsilon of the
+measured value will be very small. That is to say, if g **really is** 15.2, then x(1) really can't be outside the range [-10,-5]
+unless something very unusual happened that is not anticipated by our model.
+
+Let's overplot another curve for g = 9.8 m/s^2 which is close to the known correct value in most parts of the world
+(the gravitational constant varies a little from place to place based on for example altitude above sea level and the density of
+the crust).
+
+```julia
+
+plot!(Normal(-9.8/2,9.8/2*0.1); label="g = 9.8 m/s^2")
+scatter!([-5.03],[0]; markershape = :x, markerstrokewidth = 3, label="X(1) measured = -5.03")
+
+```
+
+Suppose that x(1) = -5.03 m. Then if g = 15.2 this would be an unheard of measurement. p(x(1)=-5.03 | g = 15.2) ~ 0 
+(the height of the blue curve at -5.03 is very close to 0). Whereas if g = 9.8 then -5.03 is a very reasonable value to expect to see, 
+close to the most reasonable thing we could imagine (the height of the red curve at -5.03 is near the top of the red peak).
+
+p(x(1)=-5.03 | g = 9.8) ~ 0.8
+
+Note that we are using the density as if it were a probability. That's not right. In fact what we should think is something like 
+
+"The probability that x(1) is within an infinitesimal range [-5.03 - epsilon/2 , -5.03 + epsilon/2] = 0.8 * epsilon"
+
+Let's set epsilon = .01 and draw the area representing the probability of seeing something very close to -5.03 if g = 9.8
+
+```julia
+
+plot(Normal(-9.8/2,9.8/2*0.1); xlim=(-6,-4), label=false)
+
+epsilon = .01
+
+bar!([-5.03 - epsilon/2],[pdf(Normal(-9.8/2,9.8/2*0.1),-5.03)]; bar_width=epsilon,label="probability")
+```
+
+# Forming an unnormalized expression for P(g | K,x(1))
+
+
+Now. Let's think about how to incorporate this information. If p(g|K) is our knowledge about g without any data, what is 
+p(g | K, x(1) = -5.03)?
+
+We can formulate the combined probability function which takes two arguments, g and x(1) as: 
+
+$$p(x(1) | g) p(g|K)$$
+
+This is sometimes called the "prior predictive distribution for x(1)". Basically given the distribution p(g|K) based on prior knowledge
+K,  we can predict the value of x(1) for every possible g value, and then form a probability distribution around each prediction, 
+and create a probability distribution for what x(1) might be.
+
+But as soon as we have a measured value for x(1) then x(1) is no longer an unknown, and we can **plug in the value for x(1)**. Now we are left with 
+the pdf of the distribution p(g|K), multiplied by a particular curve p(x(1) | g) which is a function of g only. Where this function is large,
+p(g|K) will be stretched upwards... where it is small, p(g|K) will be squished downwards. The "shape" of the p(g|K) distribution will 
+be altered. 
+
+In the end we will have a new **shape** but the curve will no longer integrate to 1 over the range of g. It is an "unnormalized" distribution.
+It satisfies the requirement that the values will always be greater than or equal to 0, but it does not integrate to 1.
+
+```julia
+
+postgu = g -> pdf(Normal(-g/2,0.1*g/2),-5.03) * pdf(Gamma(4.0,15.0/3.0),g)
+
+plot(postgu,xlim=(0,40); label = "Unnormalized Distribution",title = "p(x(1)=-5.03 | g) p(g | K)")
+
+let z = quadgk(postgu,0,Inf)[1];
+    @printf("The normalization constant is %f", z)
+    global postgnorm = g -> postgu(g)/z
+end
+
+quadgk(postgnorm,0,Inf)
+
+plot!(postgnorm; label = "Normalized Distribution")
+
+
+```
+
+However we can simply renormalize it by dividing by its integral:
+
+
+$$\frac{p(x(1) = -5.03 | g) p(g|K)}{\int p(x(1) = -5.03 | g) p(g|K) dg}$$
+
+That is, we take our p(g|K) which we knew ahead of time, we take our prediction distribution p(x(1) | g), and we multiply them 
+together, after plugging in the data value x=-5.03, the whole thing becomes a function strictly of g, and after integrating under the curve
+to get a normalization factor and dividing by the normalization constant, we get a proper distribution.
+
+# More data? More factors in the product
+
+When we have multiple data points separately collected, we form the product:
+
+
+$$\prod_{i=1}^n p(x(1) = x_i | g) p(g|K)$$
+
+In reality, for computational purposes, we work with the logarithms of these quantities... Logarithms prevent underflow 
+(where multiplying by many small numbers leads to a number that is very close to 0). And because $log(ab) = log(a)+log(b)$ it
+converts the products to sums.
+
+$$\sum_{i=1}^n \mathrm{logpdf}(x(1) = x_i | g) + \mathrm{logpdf}(g|K)$$
+
+In Turing.jl if we want to explicitly include something in the logpdf calculation directly, we use the @addlogprob!() macro
+
+# Normalization constants suck
+
+If we have a single unknown like g, we can probably calculate a normalization constant. But what if we have 3000 parameters,
+let's say 10 for every school in a state with 300 schools... Suppose we want to integrate by just using 2 points in each dimension?
+
+Then we must evaluate the function in $2^{3000}$ locations. 
+
+```julia
+
+big"2.0"^3000
+```
+This is a googol to the 9th power. We are clearly never going to get anywhere close to evaluating this integral.
+
+# Sampling to the rescue
+
+Suppose we have a trough of sand. We want to find out where the sand is in the trough. So we pick a grain and write down the x coordinate where it was in the trough.
+
+Suppose we have a means to pick grains so that every time we pick one, it is equally likely to pick any given one. And each time, we put it back where it came from.
+
+This is what "independent sampling" does. It finds where the sand is. In general when there are many unknowns, we can't
+easily do independent sampling. Fortunately for us, we can do Markov Chain Monte Carlo sampling, even if we don't know the 
+normalization constant. We can work with the unnormalized blue curve above!
+
+
+```julia
+
+smallrect(x,y,eps) = Shape(x .+ [0,eps,eps,0], y .+ [0,0,eps,eps])
+
+
+let dist = Normal(0,1);
+    plot(dist;xlim=(-3,3))
+    for i in -3:.5:3
+        
+    @gif for i in 1:100
+
+end
+
+```
+
+
+
+Now, instead of thinking about the curve and its height, we think about a large set of values each of which represents a "resonable"
+location for "the sand" to have come from (in other words, a reasonable vector of unknown values).
+
+In Julia, we can build sophisticated multi-parameter models that work for large sets of data, and get samples from the 
+distribution for the unknowns using Turing.jl (and there are other packages as well). If you are more familiar with Stan then 
+Stan.jl is another useful package. 
+
+Turing.jl creates a **"Domain Specific Language"** _within_ the Julia programming language, by using the macro facilities. 
+
+The `@model` macro takes some Julia syntax and compiles it to Julia code that defines a distribution over the unknown parameters.
+
+The [documentation for Turing.jl](https://turing.ml/v0.21/docs/using-turing/) is essential reading to use it.
+
+
+
+
+
