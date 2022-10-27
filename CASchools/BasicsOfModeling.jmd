@@ -401,7 +401,7 @@ If you doubt that, consider reading the book "Bernoulli's Fallacy" by Aubrey Cla
 1. In science we need models that are predictive. We should spend our time learning to make these models.
 2. Every model requires knowing the values of some unknown quantities, such as g, or the mass of the sun or the average number of fertile eggs laid by a certain insect.
 3. We always have **some** kind of information about the unknown quantities. Sometimes it is very weak information. But even for the most exotic unknowns usually we would say "this can be represented on a computer by a Float64 number" for example.
-4. _All models are wrong, but some models are useful_ --George Box. The most useful ones specify how far from our predictions the data should typically be.
+4. _All models are wrong, but some models are useful_ --George Box. The most useful ones specify how far from our predictions the data should typically be (ie. prediction of uncertainty).
 5. Any model that specifies item 4 can be put together with item 3 and fit using the method described here.
 
 The rest of statistics is essentially doing this stuff well.
