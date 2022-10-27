@@ -3,6 +3,7 @@ using Distributions, StatsPlots,QuadGK,Printf
 ```
 
 # Mathematical Modeling with Uncertainty
+## A primer in preparation for a model of school test score growth
 
 Suppose you have some data, and some idea how regularity in this data could be described. We'll call the 
 data "data" and we'll call the description of the regularity a "model".
@@ -268,28 +269,31 @@ be altered.
 In the end we will have a new **shape** but the curve will no longer integrate to 1 over the range of g. It is an "unnormalized" distribution.
 It satisfies the requirement that the values will always be greater than or equal to 0, but it does not integrate to 1.
 
-```julia
+However we can simply renormalize it by dividing by its integral:
 
+$$\frac{p(x(1) = -5.03 | g) p(g|K)}{\int p(x(1) = -5.03 | g) p(g|K) dg}$$
+
+```julia
+# create a function which gives us the "unnormalized" density for g given x(1) = -5.03
 postgu = g -> pdf(Normal(-g/2,0.1*g/2),-5.03) * pdf(Gamma(4.0,15.0/3.0),g)
 
 plot(postgu,xlim=(0,40); label = "Unnormalized Distribution",title = "p(x(1)=-5.03 | g) p(g | K)")
 
+# calculate the normalization constant z and make a normalized version of the above function
 let z = quadgk(postgu,0,Inf)[1];
-    @printf("The normalization constant is %f", z)
+    @printf("The normalization constant is %f\n", z)
     global postgnorm = g -> postgu(g)/z
 end
 
-quadgk(postgnorm,0,Inf)
+# verify that the integral under the normalized function is 1.0
+@show quadgk(postgnorm,0,Inf)
 
 plot!(postgnorm; label = "Normalized Distribution")
 
 
 ```
 
-However we can simply renormalize it by dividing by its integral:
 
-
-$$\frac{p(x(1) = -5.03 | g) p(g|K)}{\int p(x(1) = -5.03 | g) p(g|K) dg}$$
 
 That is, we take our p(g|K) which we knew ahead of time, we take our prediction distribution p(x(1) | g), and we multiply them 
 together, after plugging in the data value x=-5.03, the whole thing becomes a function strictly of g, and after integrating under the curve
@@ -333,26 +337,38 @@ This is what "independent sampling" does. It finds where the sand is. In general
 easily do independent sampling. Fortunately for us, we can do Markov Chain Monte Carlo sampling, even if we don't know the 
 normalization constant. We can work with the unnormalized blue curve above!
 
+Let's simulate how this works:
+
 
 ```julia
 
-smallrect(x,y,eps) = Shape(x .+ [0,eps,eps,0], y .+ [0,0,eps,eps])
+let sandx = rand(Normal(0,1),10000),
+    sandy = map(sandx) do x 
+        y = rand(Uniform(0,pdf(Normal(0,1),x)))
+    end
 
+    scatter(sandx,sandy; title="Here is our sand pile", legend=false)
 
-let dist = Normal(0,1);
-    plot(dist;xlim=(-3,3))
-    for i in -3:.5:3
-        
-    @gif for i in 1:100
-
+    p = @gif for i in 1:100
+        i = rand(1:length(sandx))
+        scatter!([sandx[i]],[sandy[i]];color="red")
+        plot!([sandx[i],sandx[i]],[0.0,sandy[i]]; color="yellow")
+        scatter!([sandx[i]],[0.0];color="yellow",markershape=:x)
+    end
+    display(p) 
+    "Tada!"
 end
-
 ```
 
+We form a pile of sand (points) such that its shape is enclosed by the standard normal distribution curve...
 
+Then we randomly select sand particles, and we color them red, and draw a yellow line from the red point down to the x 
+axis where we place a yellow x.
 
-Now, instead of thinking about the curve and its height, we think about a large set of values each of which represents a "resonable"
-location for "the sand" to have come from (in other words, a reasonable vector of unknown values).
+After 100 sand grains have been chosen uniformly from among all the grains... we use the yellow x locations on the x axis 
+as our "sample" of x values which are distributed approximately according to the sand pile's distribution shape.
+
+To get a better approximation we could obviously use more than 100 sand grains.
 
 In Julia, we can build sophisticated multi-parameter models that work for large sets of data, and get samples from the 
 distribution for the unknowns using Turing.jl (and there are other packages as well). If you are more familiar with Stan then 
@@ -364,7 +380,41 @@ The `@model` macro takes some Julia syntax and compiles it to Julia code that de
 
 The [documentation for Turing.jl](https://turing.ml/v0.21/docs/using-turing/) is essential reading to use it.
 
+# Now, if only every scientist in the world watched this video and read this document
+
+Instead of any garbage you might learn in a Statistics class, literally the vast majority of everything you need to know
+to do statistics well is contained in this document. Everything else is practice, and extension of this 
+basic knowledge to more complicated examples. But the complications **work the same way**.
+
+
+Notice for example, that we didn't once mention p-values or Null Hypotheses, or statistical "tests" or 
+bonferroni corrections or minimizing the sums of squares or F distributions or degrees of freedom or unbiased estimators
+or any of the garbage you would learn in a standard statistics textbook. That's because the standard statistics textbook
+is largely based on an incorrect notion of what statistics for use in scientific inquiry should be about. Ironically
+the main utility for the kind of calculations done in standard statistics textbooks is developing and testing 
+random number generators and sampling algorithms for the distributions we define here!
+
+If you doubt that, consider reading the book "Bernoulli's Fallacy" by Aubrey Clayton for an explanation.
+
+# What are the Key ideas for Data Analysis in Science?
+
+1. In science we need models that are predictive. We should spend our time learning to make these models.
+2. Every model requires knowing the values of some unknown quantities, such as g, or the mass of the sun or the average number of fertile eggs laid by a certain insect.
+3. We always have **some** kind of information about the unknown quantities. Sometimes it is very weak information. But even for the most exotic unknowns usually we would say "this can be represented on a computer by a Float64 number" for example.
+4. _All models are wrong, but some models are useful_ --George Box. The most useful ones specify how far from our predictions the data should typically be.
+5. Any model that specifies item 4 can be put together with item 3 and fit using the method described here.
+
+The rest of statistics is essentially doing this stuff well.
 
 
 
+# Julia is one of the premier pieces of software for doing data analysis
 
+Throughout this document we've given you a taste of a variety of important Julia capabilities:
+
+1. Distributions.jl and the structs (Normal() and Gamma() etc) and functions (pdf, logpdf etc) for describing standard distributions.
+2. Multiple Dispatch in Julia functions: plot and rand and pdf and logpdf all do **different operations** depending on the **types** of **all arguments put together**. Changing the type of an argument changes the way the function works!
+3. Macros: We talked about how @model allows Turing.jl to create a "domain specific language", but we also showed off some macros such as @printf and @gif each of which basically takes some simple code, converts it to a more complicated code, and then runs that more complicated code. A macro can save you typing things, but also it changes the **meaning** of the things you do type. To understand how a macro works, read the documentation!
+4. Plotting and Animation: we showed a variety of plots, and animated a "sampling process" using Plots.jl
+5. Calculation with big floats! We were able to calculate 2^3000 and see that it was over 1 googol to the 9th power.
+6. Numerical integration with quadgk, we were able to verify by direct numerical integration the percentage of the "sand" between -2 and 2 in the standard normal distribution, and we renormalized a Bayesian un-normalized "posterior" distribution p(x(1)=5.03|g) p(g|K) using a numerical integration.
