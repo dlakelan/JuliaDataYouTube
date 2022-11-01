@@ -1,21 +1,28 @@
-using FredData, StatsPlots, GLM
+using FredData, StatsPlots, GLM, DataFrames, DataFramesMeta, Dates, StatsBase, Printf
 
 FredKey = "e84c6fe87657a98c3cc9d406e28bb6d5"
 
 fr = Fred(FredKey)
 
-ngdppc = get_data(fr,"A939RC0Q052SBEA") #nominal dollars
+ngdppc = get_data(fr,"A939RC0Q052SBEA") #nominal dollars GDP/capita
 
 rgdppc = get_data(fr,"A939RX0Q048SBEA") # real gdp/capita
 
 cpid = get_data(fr,"CPIAUCSL")
 
+gdpdefl = get_data(fr,"GDPDEF")
+
 
 @df rgdppc.data plot(:date,log.(:value))
 
 #gdpdata = rgdppc.data
-gdpdata = @select(leftjoin(ngdppc.data,cpid.data; on = :date,makeunique = true),
+#gdpdata = @select(leftjoin(ngdppc.data,cpid.data; on = :date,makeunique = true),
+#    :date = :date, :gdppc = :value, :cpi = :value_1)
+
+gdpdata = @select(leftjoin(ngdppc.data,gdpdefl.data; on = :date,makeunique = true),
     :date = :date, :gdppc = :value, :cpi = :value_1)
+
+
 gdpdata.logcpi = log.(gdpdata.cpi)
 gdpdata.loggdp = log.(gdpdata.gdppc)
 
