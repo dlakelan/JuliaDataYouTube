@@ -1,5 +1,3 @@
-using Pkg
-Pkg.activate("../CASchools")
 
 using CSV, DataFrames, DataFramesMeta, Downloads, StatsPlots, Dates, StatsBase
 
@@ -15,6 +13,7 @@ dropmissing!(wwdat)
 #wwdat = @orderby(wwdat,:date)
 
 # plots borks on the "SentinelArrays" produced by CSV.read, we convert these to simple vectors
+# meanwhile a pull request fixing this bug has already been submitted after a discussion on discourse.julialang.org
 wwdat = copy(wwdat) ## causes the columns to be copied to vectors
 
 
