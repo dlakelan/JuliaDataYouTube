@@ -13,11 +13,10 @@ dropmissing!(wwdat)
 #wwdat = @orderby(wwdat,:date)
 
 # plots borks on the "SentinelArrays" produced by CSV.read, we convert these to simple vectors
-# meanwhile a pull request fixing this bug has already been submitted after a discussion on discourse.julialang.org
 wwdat = copy(wwdat) ## causes the columns to be copied to vectors
 
 
-wwbydat = @orderby(@by(wwdat,:date,meanconc = mean(:pcr_conc_smoothed)),:date)
+wwbydat = @orderby(@by(wwdat,:date,:meanconc = mean(:pcr_conc_smoothed)),:date)
 
 
 @df wwbydat plot(:date,:meanconc/1e6; xlab="Date",ylab="Millions Copies/ml", title="Mean Concentration of Virus across Active Sites",legend=false)
