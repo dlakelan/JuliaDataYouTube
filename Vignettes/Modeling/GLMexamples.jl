@@ -29,5 +29,4 @@ end
 display(p)
 
 fixef(mm2)
-ranef(mm2)[1]
-
+rane

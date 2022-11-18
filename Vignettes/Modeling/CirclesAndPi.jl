@@ -32,7 +32,7 @@ and multiplies by 2
 """
 function circleareaquad()
     res = quadgk(x->sqrt(1.0-x^2),-1.0,1.0; rtol=1e-10,atol=1e-10)
-    (res[1]*2,res[2]*2)
+    res .* 2
 end
 
 
