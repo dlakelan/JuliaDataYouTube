@@ -1,0 +1,118 @@
+---
+title: Examples of using Plots/StatsPlots
+author: Daniel Lakeland
+date: 2022-11-07
+cache: true
+---
+
+
+The simplest plots are lines connected together. The command `plot` takes a sequence of x
+values and a sequence of corresponding y values...
+
+```{julia}
+
+using StatsPlots
+
+## StatsPlots is Plots + extra plots for statistics I usually use it rather than Plots
+
+
+# The most basic plot is either lines or points:
+
+x = collect(-1.0:0.05:1.0)
+y = x.^2
+
+display(plot(x,y; ylim=(0,1)))
+```
+
+If you have a shape where you don't want every point connected, you can place NaN in the plot to "break" the line at that point...
+
+
+```{julia}
+
+## you can plot disconnected pieces by placing NaN in the list of x or y values
+
+xx = collect(0:.05:1.0)
+
+x2 = [x ; [NaN] ; xx]
+y2 = [y ; [NaN] ; (xx .- .5) .+ .25]
+
+display(plot(x2,y2; ylim=(0,1)))
+
+
+```
+
+Instead of connecting all the points in lines, we can plot individual points as a scatter plot using the `scatter` command:
+
+```{julia}
+
+display(scatter(x2,y2; title = "Scatter plots work similarly... here's a title"))
+
+```
+
+
+# Some basic options
+
+Some of the most basic and important options for plots includes title, xlabel, ylabel, 
+x limits, y limits, series label, and whether/where the legend will be placed... There are also modifying versions of the plot commands which add to the plot (labeled with ! at the end)
+
+```{julia}
+
+plot(x2,y2; title="A title goes here", xlab="x values", ylab="y values (dimensionless)", xlim=(-1.5,1.5),ylim=(0.0,2.0), label="x^2 and tangent line")
+scatter!([.5],[.25]; label="point of tangency")
+display(current())
+```
+
+
+# Changing the overall look
+
+You can specify "themes" for your plots. For example if you like the look of the ggplot2 plots in R, you can specify a theme that mimics it:
+
+```{julia}
+
+let pl = [];
+
+    theme(:ggplot2)
+
+    push!(pl,plot(x,y;title="ggplot2 theme"))
+
+    theme(:dark)
+    push!(pl,plot(x,y; title="Dark theme"))
+    theme(:solarized_light)
+    push!(pl,plot(x,y; title="solarized_light theme"))
+    theme(:wong)
+    push!(pl,plot(x,y; title="wong theme"))
+    theme(:gruvbox_light)
+    push!(pl,plot(x,y; title="gruvbox_light theme"))
+    theme(:mute)
+    push!(pl,plot(x,y; title="mute theme"))
+    display(plot(pl...; layout=(2,3), size=(800,400)))
+
+end
+
+
+
+```
+
+
+# Comprehensive Documentation
+
+It doesn't make sense to reproduce all the [documentation](https://docs.juliaplots.org/stable/basics/):
+
+However, we should mention some of the basic ideas.
+
+First of all, Plots.jl is a Julia front-end to multiple back-ends. The default backend is the [Gr Framework](https://gr-framework.org/) which is "a universal framework for cross-platform visualization applications. It offers developers a compact, portable and consistent graphics library for their programs. Applications range from publication quality 2D graphs to the representation of complex 3D scenes." (The GR website)
+
+The basic commands are (some of these are provided by StatsPlots)
+
+* `plot()` which creates a new plot object
+* `plot!()` and `plot!(plt, )` which adds content to the current plot or the given plot object
+* `current()` which returns the current plot object
+* `scatter()` for disconnected points
+* `histogram()` for histograms of points
+* `density()` for kernel density estimates of a single dataset
+* `violin()` for kernel density estimates for each group
+* `abline!()` to add a line by slope/intercept
+* `bar()` for bar plots
+* `contour()` for contour plots of a surface
+* `histogram2d()` for a 2d histogram of values represented as colors
+
