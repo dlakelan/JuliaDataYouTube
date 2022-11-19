@@ -1,0 +1,93 @@
+---
+title: Zombies population model
+author: Daniel Lakeland
+date: 2022-11-18
+cache: true
+---
+
+Back in 2010 while I was working on my PhD in Civil Engineering I was taking a course in dynamical systems, and read an article about modeling Zombie infestation with ODEs. I wrote a [blog post with an updated model](http://models.street-artists.org/2010/03/01/improved-zombie-dynamics/). At the time Julia was not even being worked on in early versions. I used Maxima to do some plotting of my equations. Let's see how much nicer it is to work with ODEs using the outrageously good DifferentialEquations.jl library.
+
+The original model was a compartment model with the compartments: H (Humans), Z (Zombies), D (reanimatable dead), G (Gone), and a state variable hwin (probability that the humans win in a confrontation, a learning parameter)
+
+
+
+```{julia}
+
+using DifferentialEquations, StatsPlots
+
+function zombies!(du, u, p, t)
+    (H,Z,D,G,hwin) = u
+    (b,d,r,e,rot,l,ldec,teach) = p
+    du[1] = b*H - d*H - (1-hwin)*H*Z
+    du[2] = r*D - hwin*H*Z + (1-hwin)H*Z -e*H*sqrt(Z)
+    du[3] = d*H - rot*D - r*D
+    du[4] = hwin*H*Z + rot*D + e*H*sqrt(Z)
+    du[5] = l * hwin*sqrt(1-hwin)*H*Z - ldec*hwin+teach*(1-hwin)
+end
+
+
+```
+
+After defining the differential in time, we need to create an ODEProblem to represent the specific problem we want solved, including the numerical values for p.
+
+```{julia}
+
+zinit = 1e-5
+hwininit = .1
+
+# We simulate time in years because its makes estimating some of the rates easier
+pvals = [.065/365,.02/365,.001/365,0.00,.15,5.0,.1,0.0]
+prob = ODEProblem(zombies!,[1.0-zinit,zinit,0.015,0.0,hwininit], 60.0, pvals)
+
+try
+    sol = solve(prob,Tsit5(); abstol = 1e-11, reltol=1e-8)
+catch e
+    println(e)
+end
+
+plot(sol; title="Humans u[1] vs Zombies u[2]")
+
+```
+
+Note we use reltol=1e-8 because otherwise the solver dies because the Z value goes negative and the sqrt(Z) gives an error.  
+
+This is a basic estimate of the fate of humanity, we have no chance to win against the zombies without altering the dynamics! Suppose we increase the size of the zombie killer elite population up to 5% of the Humans
+
+
+```{julia}
+pvals2 = copy(pvals)
+pvals2[4] = .05
+prob = ODEProblem(zombies!,[1.0-zinit,zinit,0.015,0.0,hwininit], 60.0, pvals2)
+
+
+try 
+   sol = solve(prob,Tsit5(); abstol=1e-11,reltol=1e-8)
+catch e
+    println(e)
+    sol=plot()
+end
+plot(sol)
+
+
+```
+With e nonzero, the solver complains that Z goes negative and sqrt(Z) is undefined for negative floats. Complex numbers won't help us here, even though this is a complex problem... Our best bet is to create a callback that causes Z to go to 0 if Z goes below some value like 1e-6
+
+```{julia}
+
+zombieextinct = ContinuousCallback((u,t,int) -> u[2] - 1e-6,
+    nothing,
+    int -> int.u[2] = 0.0)
+
+try
+    sol = solve(prob,Tsit5(); 
+        callback = zombieextinct, abstol=1e-11, reltol=1e-8)
+catch e
+    println(e)
+    sol = plot()
+end
+
+plot(sol)
+
+
+```
+
