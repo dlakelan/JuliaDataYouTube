@@ -18,7 +18,7 @@ using DifferentialEquations, StatsPlots
 function zombies!(du, u, p, t)
     (H,Z,D,G,hwin) = u
     (b,d,r,e,rot,l,ldec,teach) = p
-    sqrtZ = Z < 0.0 ? 0.0 : sqrt(Z)
+    sqrtZ = Z < 0.0 ? 0.0 : sqrt(Z) # otherwise we'll try to take sqrt of negative number sometimes
     du[1] = b*H - d*H - (1-hwin)*H*Z
     du[2] = r*D - hwin*H*Z + (1-hwin)H*Z -e*sqrtZ
     du[3] = d*H - rot*D - r*D
@@ -54,8 +54,6 @@ end
 
 
 ```
-
-Note we use reltol=1e-8 because otherwise the solver dies because the Z value goes negative and the sqrt(Z) gives an error.  
 
 This is a basic estimate of the fate of humanity. When zombies crop up, a large number of people will die, but humans quickly learn to kill the zombies! This suppresses the zombies down until people get lax in their zombie fighting skills, and a new wave shows up... this repeates until enough people have died that there is no chance to fight the zombies and they take over. Suppose we increase the education rate to .04 per day to try to keep the overall zombie killing skills elevated?
 
@@ -126,26 +124,15 @@ end
 
 ```
 
+The zombie killer elite weren't enough. But by the way, if we have less than 1 zombie they should become "extinct" at least, 
+if they aren't reanimating spontaneously from the graveyards. Let's invoke a callback that sets Z=0 if Z drops below 1e-6 (assuming there are 1M initial citizens this means below 1 zombie)
 
-
-
-With e nonzero, the solver complains that Z goes negative and sqrt(Z) is undefined for negative floats. Complex numbers won't help us here, even though this is a "complex" problem 😉... Our best bet is to create a callback that causes Z to go to 0 if Z goes below some value like 1e-6. Since we imagine our initial population of 1M people, this is saying when there is less than 1 zombie we call it 0 immediately. Also we'll use a "stiff" solver
+Also, we will try to find approximately the smallest elite force that will let us spend enough for .03 education rate.
 
 ```{julia}
 
-#zombieextinct = ContinuousCallback((u,t,int) -> u[2] - 1e-6,
-#    nothing,
-#    int -> int.u[2] = 0.0)
-
 zombieextinct = DiscreteCallback((u,t,int) -> u[2] < 1e-6,
     int -> int.u[2] = 0.0)
-
-
-#zombienoneg = ContinuousCallback((u,t,int) -> u[2],
-#    nothing,
-#    int -> int.u[2] = 0.0)
-
-#cb = CallbackSet(zombieextinct, zombienoneg)
 
 cb = zombieextinct 
 
