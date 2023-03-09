@@ -97,6 +97,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <link href="bodyfat_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="bodyfat_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
 
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
 </head>
 
@@ -115,18 +116,23 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="dimensionless-formulation" class="level2">
 <h2 class="anchored" data-anchor-id="dimensionless-formulation">Dimensionless Formulation</h2>
 <p>No physical process can depend directly on the value of a dimensional quantity such as a pressure or a length, because these quantities vary with our choice of units so we are free to make the quantity anything we want by choice of units. Only dimensionless quantities do not have this property, so only dimensionless quantities ultimately are truly determinates of physical processes.</p>
-<p>We assume that height, weight, circumference of the belly, and the density of lean body mass are 4 important variables sufficient for our purposes. The Buckingham Pi Theorem tells us that since we have 3 fundamental dimensions: mass, length, time, we can reformulate the problem into 4-3 = 1 dimensionless group which indexes the function of interest.</p>
+<p>We assume that height, weight, circumference of the belly, and the density of lean body mass are 4 important variables sufficient for our purposes. The Buckingham Pi Theorem tells us that since we have 3 fundamental dimensions: mass, length, time, we can reformulate the problem into 4-3 = 1 dimensionless group which indexes the function of interest. Technically time enters into the system in the conversion between weight and mass as <code>force = mass * acceleration</code>. Please note that most metric scales read out in “kg” because they assume you are on the surface of the earth. If you get a reading in mass units vs in force units please be careful.</p>
 <p>In this case we will formulate an “adiposity index” which increases when an estimate of the person’s density decreases (because fat is lower density than lean meat).</p>
-<p>The adiposity index is a dimensionless number which everyone will calculate the same as long as they use consistent units (always measuring mass in one units, height in another etc). It measures the ratio of the density of lean meat to the density of a “notional person” with the given mass and shaped like a cylinder of same height and with circumference equal to the waist circumference.</p>
+<p>The adiposity index is a dimensionless number which everyone will calculate the same as long as they use consistent units (always measuring mass in one units, lengths in another etc). It measures the ratio of the density of lean meat to the density of a “notional person” with the given mass and shaped like a cylinder of same height and with circumference equal to the waist circumference.</p>
 <p>The adiposity index clearly gives a strong predictor of actual measured density, and from that estimated percentage body fat.</p>
+<p><span class="math display">\[
+    A = \frac{\rho_w}{m/(h \pi (c/(2 \pi))^2)} = \frac{\rho_w h c^2}{4 \pi m}
+\]</span></p>
+<p>Instead of <span class="math inline">\(m\)</span> we can use <span class="math inline">\(w/g\)</span> if we have a weight in Newtons or lbf. Note that if we <em>are</em> on the surface of the earth, we can read off kg or lbm directly. We take <span class="math inline">\(\rho_w = 1000\)</span> kg/m^3 as the notional typical density of water which is close enough to density of lean body mass. It’s role is to give us a dimensional number whose size is about 1 which is usually a good thing for doing analysis with dimensionless ratios.</p>
+<p>Given our dataset has multiple units of measurement, we convert everything to kg and meters so all quantities are in known consistent units, which ensures we get a proper dimensionless quantity with no extra conversion factors.</p>
 <div class="cell" data-execution_count="1">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">CSV</span>,<span class="bu">StatsPlots</span>,<span class="bu">DataFrames</span>,<span class="bu">DataFramesMeta</span></span>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">CSV</span>,<span class="bu">StatsPlots</span>,<span class="bu">DataFrames</span>,<span class="bu">DataFramesMeta</span>,<span class="bu">StatsBase</span>,<span class="bu">GLM</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>dat <span class="op">=</span> CSV.<span class="fu">read</span>(<span class="st">"bodyfat.csv"</span>,DataFrame; header<span class="op">=</span><span class="fl">2</span>)</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>kgperlb <span class="op">=</span> <span class="fl">0.45359237</span> <span class="co"># this ultimately incorporates conversion between lbf of weight and kg of mass</span></span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>cmperin <span class="op">=</span> <span class="fl">2.54</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>densmeat <span class="op">=</span> <span class="fl">1000.0</span> <span class="co">#kg/m^3 (about, would be good to check, this is density of water which is going to be close)</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>densmeat <span class="op">=</span> <span class="fl">1000.0</span> <span class="co">#kg/m^3 (about, this is density of water which is going to be close)</span></span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>dat.adiposity <span class="op">=</span> densmeat <span class="op">./</span> (dat.weightlbs <span class="op">*</span> kgperlb <span class="op">./</span> (<span class="cn">pi</span> <span class="op">.*</span> (dat.heightinch <span class="op">.*</span> cmperin <span class="op">./</span> <span class="fl">100.0</span>)<span class="op">.*</span>((dat.abdomcm <span class="op">./</span> <span class="fl">100.0</span>) <span class="op">./</span> (<span class="fl">2.0</span><span class="op">*</span><span class="cn">pi</span>))<span class="op">.^</span><span class="fl">2</span>)) </span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
@@ -136,21 +142,94 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>dat <span class="op">=</span> <span class="pp">@subset</span>(dat, <span class="op">:</span>heightinch <span class="op">.&gt;</span> <span class="fl">30.0</span>)</span>
 <span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> <span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>adiposity, <span class="op">:</span>specgrav; title<span class="op">=</span><span class="st">"Measured Density vs Adiposity Index"</span>, xlab<span class="op">=</span><span class="st">"Adiposity Index"</span>,ylab<span class="op">=</span><span class="st">"Specific Gravity"</span>, legend<span class="op">=</span><span class="cn">false</span>)</span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="fu">display</span>(p)</span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> <span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>adiposity, <span class="op">:</span>pctfat; title<span class="op">=</span><span class="st">"Estimated Body Fat vs Adiposity Index"</span>, xlab<span class="op">=</span><span class="st">"Adiposity Index"</span>,ylab<span class="op">=</span><span class="st">"Percent Body Fat"</span>, legend<span class="op">=</span><span class="cn">false</span>)</span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="fu">display</span>(p)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>dat.bmi <span class="op">=</span> <span class="pp">@df</span> dat <span class="fu">identity</span>((<span class="op">:</span>weightlbs <span class="op">.*</span> kgperlb) <span class="op">./</span> (<span class="op">:</span>heightinch <span class="op">.*</span> cmperin <span class="op">./</span> <span class="fl">100.0</span>)<span class="op">.^</span><span class="fl">2</span>)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> <span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>adiposity, <span class="op">:</span>specgrav; title<span class="op">=</span><span class="st">"Measured Density vs Adiposity Index"</span>, xlab<span class="op">=</span><span class="st">"Adiposity Index"</span>,ylab<span class="op">=</span><span class="st">"Specific Gravity"</span>, legend<span class="op">=</span><span class="cn">false</span>)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="fu">display</span>(p)</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> <span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>adiposity, <span class="op">:</span>pctfat; title<span class="op">=</span><span class="st">"Estimated Body Fat vs Adiposity Index"</span>, xlab<span class="op">=</span><span class="st">"Adiposity Index"</span>,ylab<span class="op">=</span><span class="st">"Percent Body Fat"</span>, legend<span class="op">=</span><span class="cn">false</span>)</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="fu">display</span>(p)</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a><span class="co">## compare adiposity to BMI</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> <span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>adiposity, <span class="op">:</span>bmi;</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="st">"BMI vs Adiposity"</span>,xlab<span class="op">=</span><span class="st">"Adiposity (dimensionless)"</span>, ylab<span class="op">=</span><span class="st">"BMI (kg/m^2)"</span>,label<span class="op">=</span><span class="cn">false</span>,legend<span class="op">=:</span>topleft)</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a><span class="fu">plot!</span>([<span class="fl">1.0</span>,<span class="fl">2.0</span>,<span class="cn">missing</span>,<span class="fl">1.0</span>,<span class="fl">2.0</span>],[<span class="fl">30.0</span>,<span class="fl">30.0</span>,<span class="cn">missing</span>,<span class="fl">25.0</span>,<span class="fl">25.0</span>]; label<span class="op">=</span><span class="st">"BMI Thresholds"</span>)</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a><span class="fu">plot!</span>([<span class="fl">1.75</span>,<span class="fl">1.75</span>,<span class="cn">missing</span>,<span class="fl">1.65</span>,<span class="fl">1.65</span>],[<span class="fl">15.0</span>,<span class="fl">45.0</span>,<span class="cn">missing</span>,<span class="fl">15.0</span>,<span class="fl">45.0</span>]; color <span class="op">=</span> <span class="st">"blue"</span>, label<span class="op">=</span><span class="st">"Adiposity Thresholds"</span>)</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a><span class="fu">annotate!</span>([(<span class="fl">1.0</span>,<span class="fl">27.0</span>,(<span class="st">"BMI Overweight"</span>,<span class="op">:</span>left)),(<span class="fl">1.0</span>,<span class="fl">33.0</span>,(<span class="st">"BMI Obese"</span>, <span class="op">:</span>left))])</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a><span class="fu">display</span>(p)</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a><span class="co">## compare BMI to percent body fat:</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> <span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>bmi,<span class="op">:</span>pctfat)</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>dat.bmicat <span class="op">=</span> <span class="fu">map</span>(x <span class="op">-&gt;</span> (x <span class="op">&gt;</span> <span class="fl">30.0</span>) ? <span class="fl">2</span> <span class="op">:</span> (x <span class="op">&gt;</span> <span class="fl">25.0</span> ? <span class="fl">1</span> <span class="op">:</span> <span class="fl">0</span>), dat.bmi)</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> <span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>adiposity,<span class="op">:</span>pctfat;color<span class="op">=:</span>bmicat,legend<span class="op">=:</span><span class="cn">false</span>,title<span class="op">=</span><span class="st">"% Body Fat vs Adiposity</span><span class="sc">\n</span><span class="st">Color = BMI: Normal, Overweight, Obese"</span>,xlab<span class="op">=</span><span class="st">"Adiposity (dimensionless)"</span>,ylab<span class="op">=</span><span class="st">"Percent Body Fat Estimate"</span>)</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a><span class="fu">mean</span>(dat.adiposity)</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>mod <span class="op">=</span> <span class="fu">lm</span>(<span class="pp">@formula</span>(pctfat <span class="op">~</span> adiposity ),dat)</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>Plots.<span class="fu">abline!</span>(<span class="fu">coef</span>(mod)[<span class="fl">2</span>],<span class="fu">coef</span>(mod)[<span class="fl">1</span>])</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="fu">display</span>(p)</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> <span class="fu">density</span>(dat.adiposity; title<span class="op">=</span><span class="st">"Adiposity distribution (males)"</span>)</span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a><span class="fu">display</span>(p)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <p><img src="bodyfat_files/figure-html/cell-2-output-1.svg" class="img-fluid"></p>
 </div>
 <div class="cell-output cell-output-display">
 <p><img src="bodyfat_files/figure-html/cell-2-output-2.svg" class="img-fluid"></p>
 </div>
+<div class="cell-output cell-output-display">
+<p><img src="bodyfat_files/figure-html/cell-2-output-3.svg" class="img-fluid"></p>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="bodyfat_files/figure-html/cell-2-output-4.svg" class="img-fluid"></p>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="bodyfat_files/figure-html/cell-2-output-5.svg" class="img-fluid"></p>
+</div>
 </div>
 </section>
+<section id="some-comments" class="level2">
+<h2 class="anchored" data-anchor-id="some-comments">Some comments:</h2>
+<p>If you were to go along with the idea of dividing people into three major groups “normal adiposity”, “overweight”, and “obese”, this is done using BMI with the thresholds 25 and 30 using kg/m^2.</p>
+<p>In the above graph we compare that division with a division along the adiposity index axis at 1.65 and 1.75 (dimensionless). These were just picked out by eye from the graph, but notice the following:</p>
+<ol type="1">
+<li>Only about half of the people classified as adiposity index obese (above 1.75) are classified as obese by BMI.</li>
+<li>By eye, I’m guessing about 75% of people classified as “overweight” by BMI are below the 1.65 threshold for overweight by adiposity index.</li>
+<li><strong>Many</strong> people classified as overweight by BMI are very “average” adiposity index, around 1.5</li>
+<li>To set an adiposity index threshold that would catch “most” of the people classified as Overweight or Obese by BMI would require setting that threshold very low, below average, perhaps as low as 1.3 or so. This would include a considerable majority of men and is not plausibly a reasonable category. Therefore MANY people classified as overweight by BMI are NOT.</li>
+</ol>
+<p>In the final graph we see that by BMI there are a considerable number of people who are considered “overweight” (blue) who have body fat percentages below 20, some of them even below 10%. There are also a considerable number of people who are considered overweight but NOT obese who have estimated body fat percentage into the 25-35% range.</p>
+</section>
+</section>
+<section id="apparently-this-may-be-the-origin-of-the-above-dataset" class="level1">
+<h1>Apparently this may be the origin of the above dataset:</h1>
+<p><a href="https://jse.amstat.org/v4n1/datasets.johnson.html">Article</a></p>
+<p><a href="https://jse.amstat.org/datasets/fat.dat.txt">Dataset</a></p>
+</section>
+<section id="a-new-dataset-including-men-and-women" class="level1">
+<h1>A new dataset including men and women:</h1>
+<p><a href="https://www.sciencedirect.com/science/article/pii/S2352340920315365">Article</a></p>
+<p>direct link to dataset page:</p>
+<p><a href="https://figshare.com/articles/dataset/DATASET_FOR_NEW_BODY_FAT_MEASUREMENT/12982223/2">Dataset</a></p>
+<p>Unfortunately this dataset does NOT include measurements of the circumference of the waist!</p>
+<div class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>dat2 <span class="op">=</span> CSV.<span class="fu">read</span>(<span class="st">"DATASET FOR NEW BODY FAT MEASUREMENT.csv"</span>,DataFrame; normalizenames<span class="op">=</span><span class="cn">true</span>,delim<span class="op">=</span><span class="st">";"</span>,decimal<span class="op">=</span><span class="ch">','</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">names</span>(dat2))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>["GenderM1F2", "Age", "Height_cm", "W_Kg", "BMI", "FatMass_Kg", "FM", "FFM_Kg", "BMR_Kcal", "BoneMass_Kg", "MuscleMass_Kg", "MM_Trunk_Kg", "FFM_Trunk_Kg", "FM_Trunk_Kg", "FM_Trunk", "MM_LA_Kg", "FFM_LA_Kg", "FM_LA_Kg", "FM_LA", "MM_RA_Kg", "FFM_RA_Kg", "FM_RA_Kg", "FM_RA", "MM_LL_Kg", "FFM_LL_Kg", "FM_RL_Kg", "FM_LL", "MM_RL_Kg", "FFM_RL_Kg", "FM_RL_Kg_A", "FM_RL"]</code></pre>
+</div>
+</div>
+<p>The best we could do with it is use the percentage bodyfat to impute waist circumferences using the previous dataset, which would not be reasonable at all for women, and still doesn’t tell us much more about men either.</p>
 </section>
 
 </main>

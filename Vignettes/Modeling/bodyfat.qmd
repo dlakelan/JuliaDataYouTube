@@ -9,23 +9,32 @@ Using a dataset from lib.stat.cmu.edu/datasets/bodyfat for men we show how we ca
 
 No physical process can depend directly on the value of a dimensional quantity such as a pressure or a length, because these quantities vary with our choice of units so we are free to make the quantity anything we want by choice of units. Only dimensionless quantities do not have this property, so only dimensionless quantities ultimately are truly determinates of physical processes.
 
-We assume that height, weight, circumference of the belly, and the density of lean body mass are 4 important variables sufficient for our purposes. The Buckingham Pi Theorem tells us that since we have 3 fundamental dimensions: mass, length, time, we can reformulate the problem into 4-3 = 1 dimensionless group which indexes the function of interest.
+We assume that height, weight, circumference of the belly, and the density of lean body mass are 4 important variables sufficient for our purposes. The Buckingham Pi Theorem tells us that since we have 3 fundamental dimensions: mass, length, time, we can reformulate the problem into 4-3 = 1 dimensionless group which indexes the function of interest. Technically time enters into the system in the conversion between weight and mass as `force = mass * acceleration`. Please note that most metric scales read out in "kg" because they assume you are on the surface of the earth. If you get a reading in mass units vs in force units please be careful.
 
 In this case we will formulate an "adiposity index" which increases when an estimate of the person's density decreases (because fat is lower density than lean meat).
 
-The adiposity index is a dimensionless number which everyone will calculate the same as long as they use consistent units (always measuring mass in one units, height in another etc). It measures the ratio of the density of lean meat to the density of a "notional person" with the given mass and shaped like a cylinder of same height and with circumference equal to the waist circumference.
+The adiposity index is a dimensionless number which everyone will calculate the same as long as they use consistent units (always measuring mass in one units, lengths in another etc). It measures the ratio of the density of lean meat to the density of a "notional person" with the given mass and shaped like a cylinder of same height and with circumference equal to the waist circumference.
 
 The adiposity index clearly gives a strong predictor of actual measured density, and from that estimated percentage body fat.
 
+$$
+    A = \frac{\rho_w}{m/(h \pi (c/(2 \pi))^2)} = \frac{\rho_w h c^2}{4 \pi m}
+$$
+
+Instead of $m$ we can use $w/g$ if we have a weight in Newtons or lbf. Note that if we *are* on the surface of the earth, we can read off kg or lbm directly. We take $\rho_w = 1000$ kg/m^3 as the notional typical density of water which is close enough to density of lean body mass. It's role is to give us a dimensional number whose size is about 1 which is usually a good thing for doing analysis with dimensionless ratios.
+
+Given our dataset has multiple units of measurement, we convert everything to kg and meters so all quantities are in known consistent units, which ensures we get a proper dimensionless quantity with no extra conversion factors.
+
+
 ```{julia}
 
-using CSV,StatsPlots,DataFrames,DataFramesMeta
+using CSV,StatsPlots,DataFrames,DataFramesMeta,StatsBase,GLM
 
 dat = CSV.read("bodyfat.csv",DataFrame; header=2)
 
 kgperlb = 0.45359237 # this ultimately incorporates conversion between lbf of weight and kg of mass
 cmperin = 2.54
-densmeat = 1000.0 #kg/m^3 (about, would be good to check, this is density of water which is going to be close)
+densmeat = 1000.0 #kg/m^3 (about, this is density of water which is going to be close)
 
 dat.adiposity = densmeat ./ (dat.weightlbs * kgperlb ./ (pi .* (dat.heightinch .* cmperin ./ 100.0).*((dat.abdomcm ./ 100.0) ./ (2.0*pi)).^2)) 
 
@@ -35,6 +44,7 @@ dat.adiposity = densmeat ./ (dat.weightlbs * kgperlb ./ (pi .* (dat.heightinch .
 
 dat = @subset(dat, :heightinch .> 30.0)
 
+dat.bmi = @df dat identity((:weightlbs .* kgperlb) ./ (:heightinch .* cmperin ./ 100.0).^2)
 
 p = @df dat scatter(:adiposity, :specgrav; title="Measured Density vs Adiposity Index", xlab="Adiposity Index",ylab="Specific Gravity", legend=false)
 display(p)
@@ -42,5 +52,76 @@ display(p)
 p = @df dat scatter(:adiposity, :pctfat; title="Estimated Body Fat vs Adiposity Index", xlab="Adiposity Index",ylab="Percent Body Fat", legend=false)
 
 display(p)
+
+## compare adiposity to BMI
+
+p = @df dat scatter(:adiposity, :bmi;
+    title="BMI vs Adiposity",xlab="Adiposity (dimensionless)", ylab="BMI (kg/m^2)",label=false,legend=:topleft)
+plot!([1.0,2.0,missing,1.0,2.0],[30.0,30.0,missing,25.0,25.0]; label="BMI Thresholds")
+plot!([1.75,1.75,missing,1.65,1.65],[15.0,45.0,missing,15.0,45.0]; color = "blue", label="Adiposity Thresholds")
+annotate!([(1.0,27.0,("BMI Overweight",:left)),(1.0,33.0,("BMI Obese", :left))])
+
+display(p)
+
+
+## compare BMI to percent body fat:
+
+p = @df dat scatter(:bmi,:pctfat)
+
+dat.bmicat = map(x -> (x > 30.0) ? 2 : (x > 25.0 ? 1 : 0), dat.bmi)
+
+
+p = @df dat scatter(:adiposity,:pctfat;color=:bmicat,legend=:false,title="% Body Fat vs Adiposity\nColor = BMI: Normal, Overweight, Obese",xlab="Adiposity (dimensionless)",ylab="Percent Body Fat Estimate")
+
+mean(dat.adiposity)
+
+
+mod = lm(@formula(pctfat ~ adiposity ),dat)
+Plots.abline!(coef(mod)[2],coef(mod)[1])
+display(p)
+
+p = density(dat.adiposity; title="Adiposity distribution (males)")
+display(p)
+
 ```
 
+## Some comments:
+
+If you were to go along with the idea of dividing people into three major groups "normal adiposity", "overweight", and "obese", this is done using BMI with the thresholds 25 and 30 using kg/m^2. 
+
+In the above graph we compare that division with a division along the adiposity index axis at 1.65 and 1.75 (dimensionless). These were just picked out by eye from the graph, but notice the following:
+
+1) Only about half of the people classified as adiposity index obese (above 1.75) are classified as obese by BMI.
+2) By eye, I'm guessing about 75% of people classified as "overweight" by BMI are below the 1.65 threshold for overweight by adiposity index.
+3) **Many** people classified as overweight by BMI are very "average" adiposity index, around 1.5
+4) To set an adiposity index threshold that would catch "most" of the people classified as Overweight or Obese by BMI would require setting that threshold very low, below average, perhaps as low as 1.3 or so. This would include a considerable majority of men and is not plausibly a reasonable category. Therefore MANY people classified as overweight by BMI are NOT.
+
+In the final graph we see that by BMI there are a considerable number of people who are considered "overweight" (blue) who have body fat percentages below 20, some of them even below 10%. There are also a considerable number of people who are considered overweight but NOT obese who have estimated body fat percentage into the 25-35% range. 
+
+
+
+# Apparently this may be the origin of the above dataset:
+
+[Article](https://jse.amstat.org/v4n1/datasets.johnson.html)
+
+[Dataset](https://jse.amstat.org/datasets/fat.dat.txt)
+
+# A new dataset including men and women:
+
+[Article](https://www.sciencedirect.com/science/article/pii/S2352340920315365)
+
+direct link to dataset page: 
+
+[Dataset](https://figshare.com/articles/dataset/DATASET_FOR_NEW_BODY_FAT_MEASUREMENT/12982223/2)
+
+Unfortunately this dataset does NOT include measurements of the circumference of the waist!
+
+```{julia}
+
+dat2 = CSV.read("DATASET FOR NEW BODY FAT MEASUREMENT.csv",DataFrame; normalizenames=true,delim=";",decimal=',')
+
+println(names(dat2))
+
+```
+
+The best we could do with it is use the percentage bodyfat to impute waist circumferences using the previous dataset, which would not be reasonable at all for women, and still doesn't tell us much more about men either.
