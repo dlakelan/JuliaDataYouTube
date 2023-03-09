@@ -1,0 +1,46 @@
+
+# Risk of heart disease using adiposity measures
+
+We assume heart disease risk is related to adiposity, but we don't want to do underwater weighing, we want a measure that we can take in a doctors office and get a risk score... 
+
+Using a dataset from lib.stat.cmu.edu/datasets/bodyfat for men we show how we can calculate that.
+
+## Dimensionless Formulation
+
+No physical process can depend directly on the value of a dimensional quantity such as a pressure or a length, because these quantities vary with our choice of units so we are free to make the quantity anything we want by choice of units. Only dimensionless quantities do not have this property, so only dimensionless quantities ultimately are truly determinates of physical processes.
+
+We assume that height, weight, circumference of the belly, and the density of lean body mass are 4 important variables sufficient for our purposes. The Buckingham Pi Theorem tells us that since we have 3 fundamental dimensions: mass, length, time, we can reformulate the problem into 4-3 = 1 dimensionless group which indexes the function of interest.
+
+In this case we will formulate an "adiposity index" which increases when an estimate of the person's density decreases (because fat is lower density than lean meat).
+
+The adiposity index is a dimensionless number which everyone will calculate the same as long as they use consistent units (always measuring mass in one units, height in another etc). It measures the ratio of the density of lean meat to the density of a "notional person" with the given mass and shaped like a cylinder of same height and with circumference equal to the waist circumference.
+
+The adiposity index clearly gives a strong predictor of actual measured density, and from that estimated percentage body fat.
+
+```{julia}
+
+using CSV,StatsPlots,DataFrames,DataFramesMeta
+
+dat = CSV.read("bodyfat.csv",DataFrame; header=2)
+
+kgperlb = 0.45359237
+cmperin = 2.54
+densmeat = 1000.0 #kg/m^3 (about, would be good to check)
+
+dat.adiposity = densmeat ./ (dat.weightlbs * kgperlb ./ (pi .* (dat.heightinch .* cmperin ./ 100.0).*((dat.abdomcm ./ 100.0) ./ (2.0*pi)).^2)) 
+
+# one 44 year old guy has reported weight of 205 lbs and height of 29.5 inches
+# clearly a measurement error in height, or he has no legs or something unusual
+# eliminating him
+
+dat = @subset(dat, :heightinch .> 30.0)
+
+
+p = @df dat scatter(:adiposity, :specgrav; title="Measured Density vs Adiposity Index", xlab="Adiposity Index",ylab="Specific Gravity", legend=false)
+display(p)
+
+p = @df dat scatter(:adiposity, :pctfat; title="Estimated Body Fat vs Adiposity Index", xlab="Adiposity Index",ylab="Percent Body Fat", legend=false)
+
+display(p)
+```
+
