@@ -124,9 +124,9 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>dat <span class="op">=</span> CSV.<span class="fu">read</span>(<span class="st">"bodyfat.csv"</span>,DataFrame; header<span class="op">=</span><span class="fl">2</span>)</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>kgperlb <span class="op">=</span> <span class="fl">0.45359237</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>kgperlb <span class="op">=</span> <span class="fl">0.45359237</span> <span class="co"># this ultimately incorporates conversion between lbf of weight and kg of mass</span></span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>cmperin <span class="op">=</span> <span class="fl">2.54</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>densmeat <span class="op">=</span> <span class="fl">1000.0</span> <span class="co">#kg/m^3 (about, would be good to check)</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>densmeat <span class="op">=</span> <span class="fl">1000.0</span> <span class="co">#kg/m^3 (about, would be good to check, this is density of water which is going to be close)</span></span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>dat.adiposity <span class="op">=</span> densmeat <span class="op">./</span> (dat.weightlbs <span class="op">*</span> kgperlb <span class="op">./</span> (<span class="cn">pi</span> <span class="op">.*</span> (dat.heightinch <span class="op">.*</span> cmperin <span class="op">./</span> <span class="fl">100.0</span>)<span class="op">.*</span>((dat.abdomcm <span class="op">./</span> <span class="fl">100.0</span>) <span class="op">./</span> (<span class="fl">2.0</span><span class="op">*</span><span class="cn">pi</span>))<span class="op">.^</span><span class="fl">2</span>)) </span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>

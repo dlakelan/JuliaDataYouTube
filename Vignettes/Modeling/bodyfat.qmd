@@ -23,9 +23,9 @@ using CSV,StatsPlots,DataFrames,DataFramesMeta
 
 dat = CSV.read("bodyfat.csv",DataFrame; header=2)
 
-kgperlb = 0.45359237
+kgperlb = 0.45359237 # this ultimately incorporates conversion between lbf of weight and kg of mass
 cmperin = 2.54
-densmeat = 1000.0 #kg/m^3 (about, would be good to check)
+densmeat = 1000.0 #kg/m^3 (about, would be good to check, this is density of water which is going to be close)
 
 dat.adiposity = densmeat ./ (dat.weightlbs * kgperlb ./ (pi .* (dat.heightinch .* cmperin ./ 100.0).*((dat.abdomcm ./ 100.0) ./ (2.0*pi)).^2)) 
 
