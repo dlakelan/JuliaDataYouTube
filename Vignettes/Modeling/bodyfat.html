@@ -210,6 +210,147 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <p>In the final graph we see that by BMI there are a considerable number of people who are considered “overweight” (blue) who have body fat percentages below 20, some of them even below 10%. There are also a considerable number of people who are considered overweight but NOT obese who have estimated body fat percentage into the 25-35% range.</p>
 </section>
 </section>
+<section id="a-digression-on-why-the-adiposity-scale-is-meaningful" class="level1">
+<h1>A digression on why the adiposity scale is meaningful</h1>
+<p>One objection to this adiposity scale is that it doesn’t take into account the fact that as animals get taller their bones make up a bigger fraction of their cross section to compensate for the increased pressures they undergo. I believe this is a “second order” effect which is ignorable for the purposes described here. Here is a basic argument regarding that.</p>
+<p>Water and muscle have approximately the same density, let’s measure density as a fraction of water, so muscle has density about 1, on this scale bone has density about 1.8 and fat has density about 0.9</p>
+<p>If we consider a low-body-fat person who is on the short end of the human scale, say 5ft tall, and we scale them up by just multiplying all the lengths in their body by 6/5 then they will be 6ft tall. How different would this scaled person be compared to an actual person who is 6ft tall? If we do pure geometric scaling, then the percentage of the volume taken up by bone would be the same in the two. That’s probably not correct. Over this small range of differences, it might be appropriate to say that the fraction of the body which is bone is near constant, but varies linearly with height. In other words:</p>
+<p><span class="math display">\[
+f_{bone} = f_0 + k h
+\]</span></p>
+<p>As a first approximation <span class="math inline">\(f_0\)</span> should be something like 0.15 according to for example <a href="https://en.wikipedia.org/wiki/Human_skeleton">Wikipedia article on skeleton</a>. Let’s measure h as a fraction of the <a href="https://en.wikipedia.org/wiki/Robert_Wadlow">Tallest Man Ever</a> who was about 8ft 11in (272 cm). On this scale people from 4.5ft to 6.5 ft which is the bulk of human heights range over about <span class="math inline">\(h \in [.50,.73]\)</span> with typical value for males perhaps .66</p>
+<div class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>wadlh <span class="op">=</span> <span class="fl">8.0</span><span class="op">+</span><span class="fl">11.0</span><span class="op">/</span><span class="fl">12</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>lowh <span class="op">=</span> <span class="fl">4.5</span><span class="op">/</span>wadlh</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>typh <span class="op">=</span> (<span class="fl">5</span><span class="op">+</span><span class="fl">11</span><span class="op">/</span><span class="fl">12</span>)<span class="op">/</span>wadlh</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>highh <span class="op">=</span> <span class="fl">6.5</span><span class="op">/</span>wadlh</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="st">"low h = </span><span class="sc">$</span>lowh<span class="st">, typical h = </span><span class="sc">$</span>typh<span class="st">, high h = </span><span class="sc">$</span>highh<span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>low h = 0.5046728971962617, typical h = 0.663551401869159, high h = 0.7289719626168225</code></pre>
+</div>
+</div>
+<p>If we want to model the weight of a “healthy athletic” person as a function of height, we can imagine that they scale as follows:</p>
+<p><span class="math display">\[
+W = 1.8 f h^3 + 1.0 (1-f) h^3\
+f = 0.15 + k (h - .6)
+\]</span></p>
+<p>Let’s do the math symbolically in Julia</p>
+<div class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">Symbolics</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="pp">@variables</span> w f h k</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>wexpr <span class="op">=</span> <span class="fl">1.8</span> <span class="op">*</span> f <span class="op">*</span> h<span class="op">^</span><span class="fl">3</span> <span class="op">+</span> <span class="fl">1.0</span> <span class="fu">*</span>(<span class="fl">1</span><span class="op">-</span>f)<span class="op">*</span>h<span class="op">^</span><span class="fl">3</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>fexpr <span class="op">=</span> <span class="fl">0.15</span> <span class="op">+</span> k <span class="op">*</span> (h<span class="op">-</span><span class="fl">.6</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>wexpr <span class="op">=</span> <span class="fu">substitute</span>(wexpr,<span class="fu">Dict</span>([f <span class="op">=&gt;</span> fexpr]))</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>wexpr <span class="op">=</span> <span class="fu">simplify</span>(wexpr,expand<span class="op">=</span><span class="cn">true</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="37">
+<p><span class="math display">\[ \begin{equation}
+1.12 h^{3} - 0.4800000000000001 h^{3} k + 0.8 h^{4} k
+\end{equation}
+\]</span></p>
+</div>
+</div>
+<p>We see that weight scales with an <span class="math inline">\(h^3\)</span> term, and an <span class="math inline">\(h^4\)</span> term with a small coefficient. Now plausibly k is on the order of 0.1 at most, since moving from a baby say 0.1 height to 1 height the skeleton maybe goes from say 0.15 of the body mass to 0.25 of the body mass at most.</p>
+<p>Julia symbolics are limited compared to say <a href="https://maxima.sourceforge.io/">Maxima</a> so we’ll rewrite the expression by hand:</p>
+<div class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>wexpr <span class="op">=</span> (<span class="fl">1.12</span> <span class="op">-</span> <span class="fl">.48</span>)<span class="op">*</span>h<span class="op">^</span><span class="fl">3</span> <span class="op">+</span> <span class="fl">0.8</span><span class="op">*</span>k<span class="op">*</span>h<span class="op">^</span><span class="fl">4</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>h3term <span class="op">=</span> <span class="fl">.64</span><span class="op">*</span>h<span class="op">^</span><span class="fl">3</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>h4term <span class="op">=</span> <span class="fl">.8</span><span class="op">*</span>k<span class="op">*</span>h<span class="op">^</span><span class="fl">4</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="38">
+<p><span class="math display">\[ \begin{equation}
+0.8 h^{4} k
+\end{equation}
+\]</span></p>
+</div>
+</div>
+<p>Now let’s substitute some typical values to see the results. and h for a typical person is say 0.6. We see that weight is about 0.24 on whatever units we’re using.</p>
+<div class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">substitute</span>(h3term,<span class="fu">Dict</span>([h<span class="op">=&gt;</span><span class="fl">.6</span>])))</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">substitute</span>(h4term,<span class="fu">Dict</span>([h<span class="op">=&gt;</span><span class="fl">.6</span>,k<span class="op">=&gt;</span><span class="fl">0.1</span>])))</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">substitute</span>(<span class="fu">expand_derivatives</span>(<span class="fu">Differential</span>(h)(h3term)),<span class="fu">Dict</span>([h<span class="op">=&gt;</span><span class="fl">.5</span>])))</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">substitute</span>(<span class="fu">expand_derivatives</span>(<span class="fu">Differential</span>(h)(h4term)),<span class="fu">Dict</span>([h<span class="op">=&gt;</span><span class="fl">.5</span>,k<span class="op">=&gt;</span><span class="fl">0.1</span>])))</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">substitute</span>(<span class="fu">expand_derivatives</span>(<span class="fu">Differential</span>(h)(h3term)),<span class="fu">Dict</span>([h<span class="op">=&gt;</span><span class="fl">.7</span>])))</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">substitute</span>(<span class="fu">expand_derivatives</span>(<span class="fu">Differential</span>(h)(h4term)),<span class="fu">Dict</span>([h<span class="op">=&gt;</span><span class="fl">.7</span>,k<span class="op">=&gt;</span><span class="fl">0.1</span>])))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>0.13824
+0.010368
+0.48
+0.04000000000000001
+0.9407999999999999
+0.10975999999999997</code></pre>
+</div>
+</div>
+<p>We can see that the h^4 term contributes about 10% to the weight, and that it also contributes about 10% to the derivative of weight with height which is more or less a constant contribution across the range of typical heights (0.5 to 0.7). Overall, on the range 0.5 to 0.7 or so, the growth of the skeleton as a fraction of the total can be ignored when discussing crude risk factors associated with heart disease and adiposity. If one wanted to include skeletal factors in a more comprehensive model, perhaps an additional dimensionless ratio measuring wrist or ankle circumference as a fraction of height would be reasonable.</p>
+</section>
+<section id="does-the-above-analysis-play-out-in-the-data" class="level1">
+<h1>Does the above analysis play out in the data?</h1>
+<p>Let’s take a look at a few narrow ranges of height, and see how adiposity and percentage body fat vary for each group. We’ll split the dataset into quintiles by height, and then plot % body fat vs adiposity with coloration by quintile</p>
+<div class="cell" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">CategoricalArrays</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>dat.hclass <span class="op">=</span> <span class="fu">cut</span>(dat.heightinch,<span class="fl">5</span>)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>adiposity,<span class="op">:</span>pctfat; color<span class="op">=</span><span class="fu">levelcode</span>.(<span class="op">:</span>hclass),</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="st">"Pct Fat vs Adiposity</span><span class="sc">\n</span><span class="st">Colored by quantiles of height"</span>,xlab<span class="op">=</span><span class="st">"Adiposity"</span>,ylab<span class="op">=</span><span class="st">"Percent Body Fat"</span>,legend<span class="op">=</span><span class="cn">false</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="40">
+<p><img src="bodyfat_files/figure-html/cell-7-output-1.svg" class="img-fluid"></p>
+</div>
+</div>
+<p>It definitely seems like for every band of height (color) the relationship between the percentage body fat and the adiposity index is more or less the same, in other words the clouds of data are equally mixed and do not have obvious banding or tilting of the sub-clouds. Each height group actually spans most of the adiposity range and does so along a similar horizontal axis.</p>
+<p>What about doing the same thing for weight?</p>
+<div class="cell" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>dat.wclass <span class="op">=</span> <span class="fu">cut</span>(dat.weightlbs,<span class="fl">5</span>)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="pp">@df</span> dat <span class="fu">scatter</span>(<span class="op">:</span>adiposity,<span class="op">:</span>pctfat; color<span class="op">=</span><span class="fu">levelcode</span>.(<span class="op">:</span>wclass),</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="st">"Pct Fat vs Adiposity</span><span class="sc">\n</span><span class="st">Colored by quantiles of weight"</span>,xlab<span class="op">=</span><span class="st">"Adiposity"</span>,ylab<span class="op">=</span><span class="st">"Percent Body Fat"</span>,legend<span class="op">=</span><span class="cn">false</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="41">
+<p><img src="bodyfat_files/figure-html/cell-8-output-1.svg" class="img-fluid"></p>
+</div>
+</div>
+<p>Weight is obviously correlated with adiposity. It’s not surprising that the highest adiposity range tends to be mostly people in the higher weight classes, and the lower adiposity ranges are people in lower weight classes. However there is still a lot of mixing and the variation in percentage body fat within a weight class also indicates variation in adiposity that tracks the percentage body fat. Basically for a given weight, a tall thin person will have low adiposity, and a short fat person will have high adiposity.</p>
+<p>Without doing too much extra work, we can estimate how much variation there is in the slope of the line and the overall mean among the different height groups. We can fit a MixedEffects model allowing a perturbation for each group. When we do, it estimates zero differences between the groups, as follows:</p>
+<div class="cell" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">MixedModels</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>hm <span class="op">=</span> <span class="fu">fit</span>(MixedModel,<span class="pp">@formula</span>(pctfat <span class="op">~</span> <span class="fl">1</span><span class="op">+</span>adiposity <span class="op">+</span> (<span class="fl">1</span><span class="op">+</span>adiposity <span class="op">|</span> hclass)), dat)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(hm)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="st">"Random effect estimates for mean and slope for each group:"</span>)</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="fu">display</span>(<span class="fu">ranef</span>(hm)[<span class="fl">1</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Linear mixed model fit by maximum likelihood
+ pctfat ~ 1 + adiposity + (1 + adiposity | hclass)
+   logLik   -2 logLik     AIC       AICc        BIC    
+  -761.9236  1523.8472  1535.8472  1536.1915  1556.9999
+
+Variance components:
+            Column     Variance     Std.Dev.    Corr.
+hclass   (Intercept)   0.000000000 0.000000000
+         adiposity     0.000000118 0.000343273  +NaN
+Residual              25.361374272 5.036007771
+ Number of obs: 251; levels of grouping factors: 5
+
+  Fixed-effects parameters:
+───────────────────────────────────────────────────
+                Coef.  Std. Error       z  Pr(&gt;|z|)
+───────────────────────────────────────────────────
+(Intercept)  -41.7589     2.93618  -14.22    &lt;1e-45
+adiposity     40.3881     1.93723   20.85    &lt;1e-95
+───────────────────────────────────────────────────
+Random effect estimates for mean and slope for each group:</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<pre><code>2×5 Matrix{Float64}:
+ 0.0          0.0         0.0          0.0          0.0
+ 1.36846e-7  -1.25042e-7  2.93976e-7  -3.46615e-8  -2.71118e-7</code></pre>
+</div>
+</div>
+<p>The estimates are actually way too close to zero to be reliable. This usually indicates some kind of issue in fitting, like with numerical stability or something similar. A Bayesian model would be a more comprehensive way to handle this and could allow us to compare individual slope differences, but there’s really no advantage, we have every reason to believe that this should be the case, and the evidence from the data is consistent with that conclusion.</p>
+<p>Overall the remaining standard deviation of the residuals is about 5% of body fat, which is likely within the measurement error in the estimates from the dataset, as the estimates themselves are derived by an imperfect formula from underwater weighing.</p>
+</section>
 <section id="apparently-this-may-be-the-origin-of-the-above-dataset" class="level1">
 <h1>Apparently this may be the origin of the above dataset:</h1>
 <p><a href="https://jse.amstat.org/v4n1/datasets.johnson.html">Article</a></p>
@@ -221,10 +362,10 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <p>direct link to dataset page:</p>
 <p><a href="https://figshare.com/articles/dataset/DATASET_FOR_NEW_BODY_FAT_MEASUREMENT/12982223/2">Dataset</a></p>
 <p>Unfortunately this dataset does NOT include measurements of the circumference of the waist!</p>
-<div class="cell" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>dat2 <span class="op">=</span> CSV.<span class="fu">read</span>(<span class="st">"DATASET FOR NEW BODY FAT MEASUREMENT.csv"</span>,DataFrame; normalizenames<span class="op">=</span><span class="cn">true</span>,delim<span class="op">=</span><span class="st">";"</span>,decimal<span class="op">=</span><span class="ch">','</span>)</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">names</span>(dat2))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>dat2 <span class="op">=</span> CSV.<span class="fu">read</span>(<span class="st">"DATASET FOR NEW BODY FAT MEASUREMENT.csv"</span>,DataFrame; normalizenames<span class="op">=</span><span class="cn">true</span>,delim<span class="op">=</span><span class="st">";"</span>,decimal<span class="op">=</span><span class="ch">','</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="fu">println</span>(<span class="fu">names</span>(dat2))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>["GenderM1F2", "Age", "Height_cm", "W_Kg", "BMI", "FatMass_Kg", "FM", "FFM_Kg", "BMR_Kcal", "BoneMass_Kg", "MuscleMass_Kg", "MM_Trunk_Kg", "FFM_Trunk_Kg", "FM_Trunk_Kg", "FM_Trunk", "MM_LA_Kg", "FFM_LA_Kg", "FM_LA_Kg", "FM_LA", "MM_RA_Kg", "FFM_RA_Kg", "FM_RA_Kg", "FM_RA", "MM_LL_Kg", "FFM_LL_Kg", "FM_RL_Kg", "FM_LL", "MM_RL_Kg", "FFM_RL_Kg", "FM_RL_Kg_A", "FM_RL"]</code></pre>
 </div>

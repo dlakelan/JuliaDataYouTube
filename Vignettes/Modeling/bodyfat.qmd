@@ -99,6 +99,133 @@ In the above graph we compare that division with a division along the adiposity 
 In the final graph we see that by BMI there are a considerable number of people who are considered "overweight" (blue) who have body fat percentages below 20, some of them even below 10%. There are also a considerable number of people who are considered overweight but NOT obese who have estimated body fat percentage into the 25-35% range. 
 
 
+# A digression on why the adiposity scale is meaningful
+
+One objection to this adiposity scale is that it doesn't take into account the fact that as animals get taller their bones make up a bigger fraction of their cross section to compensate for the increased pressures they undergo. I believe this is a "second order" effect which is ignorable for the purposes described here. Here is a basic argument regarding that.
+
+Water and muscle have approximately the same density, let's measure density as a fraction of water, so muscle has density about 1, on this scale bone has density about 1.8 and fat has density about 0.9
+
+If we consider a low-body-fat person who is on the short end of the human scale, say 5ft tall, and we scale them up by just multiplying all the lengths in their body by 6/5 then they will be 6ft tall. How different would this scaled person be compared to an actual person who is 6ft tall? If we do pure geometric scaling, then the percentage of the volume taken up by bone would be the same in the two. That's probably not correct. Over this small range of differences, it might be appropriate to say that the fraction of the body which is bone is near constant, but varies linearly with height. In other words:
+
+$$
+f_{bone} = f_0 + k h
+$$
+
+As a first approximation $f_0$ should be something like 0.15 according to for example [Wikipedia article on skeleton](https://en.wikipedia.org/wiki/Human_skeleton). Let's measure h as a fraction of the [Tallest Man Ever](https://en.wikipedia.org/wiki/Robert_Wadlow) who was about 8ft 11in (272 cm). On this scale people from 4.5ft to 6.5 ft which is the bulk of human heights range over about $h \in [.50,.73]$ with typical value for males perhaps .66
+
+```{julia}
+wadlh = 8.0+11.0/12
+lowh = 4.5/wadlh
+typh = (5+11/12)/wadlh
+highh = 6.5/wadlh
+
+println("low h = $lowh, typical h = $typh, high h = $highh")
+
+```
+
+If we want to model the weight of a "healthy athletic" person as a function of height, we can imagine that they scale as follows:
+
+$$
+W = 1.8 f h^3 + 1.0 (1-f) h^3\
+f = 0.15 + k (h - .6)
+$$
+
+Let's do the math symbolically in Julia
+
+```{julia}
+
+using Symbolics
+@variables w f h k
+
+wexpr = 1.8 * f * h^3 + 1.0 *(1-f)*h^3
+fexpr = 0.15 + k * (h-.6)
+wexpr = substitute(wexpr,Dict([f => fexpr]))
+wexpr = simplify(wexpr,expand=true)
+
+```
+
+We see that weight scales with an $h^3$ term, and an $h^4$ term with a small coefficient. Now plausibly k is on the order of 0.1 at most, since moving from a baby say 0.1 height to 1 height the skeleton maybe goes from say 0.15 of the body mass to 0.25 of the body mass at most. 
+
+Julia symbolics are limited compared to say [Maxima](https://maxima.sourceforge.io/) so we'll rewrite the expression by hand:
+
+```{julia}
+
+wexpr = (1.12 - .48)*h^3 + 0.8*k*h^4
+
+h3term = .64*h^3
+h4term = .8*k*h^4
+
+```
+
+
+Now let's substitute some typical values to see the results. and h for a typical person is say 0.6. We see that weight is about 0.24 on whatever units we're using. 
+
+```{julia}
+
+println(substitute(h3term,Dict([h=>.6])))
+println(substitute(h4term,Dict([h=>.6,k=>0.1])))
+
+println(substitute(expand_derivatives(Differential(h)(h3term)),Dict([h=>.5])))
+println(substitute(expand_derivatives(Differential(h)(h4term)),Dict([h=>.5,k=>0.1])))
+
+println(substitute(expand_derivatives(Differential(h)(h3term)),Dict([h=>.7])))
+println(substitute(expand_derivatives(Differential(h)(h4term)),Dict([h=>.7,k=>0.1])))
+
+```
+
+We can see that the h^4 term contributes about 10% to the weight, and that it also contributes about 10% to the derivative of weight with height which is more or less a constant contribution across the range of typical heights (0.5 to 0.7). Overall, on the range 0.5 to 0.7 or so, the growth of the skeleton as a fraction of the total can be ignored when discussing crude risk factors associated with heart disease and adiposity. If one wanted to include skeletal factors in a more comprehensive model, perhaps an additional dimensionless ratio measuring wrist or ankle circumference as a fraction of height would be reasonable.
+
+
+# Does the above analysis play out in the data?
+
+Let's take a look at a few narrow ranges of height, and see how adiposity and percentage body fat vary for each group. We'll split the dataset into quintiles by height, and then plot % body fat vs adiposity with coloration by quintile
+
+
+```{julia}
+
+using CategoricalArrays
+dat.hclass = cut(dat.heightinch,5)
+@df dat scatter(:adiposity,:pctfat; color=levelcode.(:hclass),
+    title="Pct Fat vs Adiposity\nColored by quantiles of height",xlab="Adiposity",ylab="Percent Body Fat",legend=false)
+
+
+```
+
+
+It definitely seems like for every band of height (color) the relationship between the percentage body fat and the adiposity index is more or less the same, in other words the clouds of data are equally mixed and do not have obvious banding or tilting of the sub-clouds. Each height group actually spans most of the adiposity range and does so along a similar horizontal axis.
+
+What about doing the same thing for weight?
+
+```{julia}
+
+dat.wclass = cut(dat.weightlbs,5)
+@df dat scatter(:adiposity,:pctfat; color=levelcode.(:wclass),
+    title="Pct Fat vs Adiposity\nColored by quantiles of weight",xlab="Adiposity",ylab="Percent Body Fat",legend=false)
+
+```
+
+Weight is obviously correlated with adiposity. It's not surprising that the highest adiposity range tends to be mostly people in the higher weight classes, and the lower adiposity ranges are people in lower weight classes. However there is still a lot of mixing and the variation in percentage body fat within a weight class also indicates variation in adiposity that tracks the percentage body fat. Basically for a given weight, a tall thin person will have low adiposity, and a short fat person will have high adiposity.
+
+Without doing too much extra work, we can estimate how much variation there is in the slope of the line and the overall mean among the different height groups. We can fit a MixedEffects model allowing a perturbation for each group. When we do, it estimates zero differences between the groups, as follows:
+
+```{julia}
+
+using MixedModels
+
+hm = fit(MixedModel,@formula(pctfat ~ 1+adiposity + (1+adiposity | hclass)), dat)
+
+println(hm)
+
+println("Random effect estimates for mean and slope for each group:")
+
+display(ranef(hm)[1])
+
+```
+
+The estimates are actually way too close to zero to be reliable. This usually indicates some kind of issue in fitting, like with numerical stability or something similar. A Bayesian model would be a more comprehensive way to handle this and could allow us to compare individual slope differences, but there's really no advantage, we have every reason to believe that this should be the case, and the evidence from the data is consistent with that conclusion.
+
+Overall the remaining standard deviation of the residuals is about 5% of body fat, which is likely within the measurement error in the estimates from the dataset, as the estimates themselves are derived by an imperfect formula from underwater weighing.
+
 
 # Apparently this may be the origin of the above dataset:
 
